@@ -1,15 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cellsOf, wordFromCells } from './engine.ts';
+import { cellsOf, generatePuzzleFromSpec, wordFromCells } from './engine.ts';
 import {
   EMPTY_PROGRESS,
   MAX_LEVELS,
+  WORLD_COUNT,
+  WORLD_SIZE,
   generateLevelPuzzle,
+  getWorld,
   levelConfig,
+  maskWord,
   recordLevelResult,
   sanitizeProgress,
   totalStars,
+  worldOf,
 } from './levels.ts';
+import { THEMES } from './themes.ts';
 
 const levels = Array.from({ length: MAX_LEVELS }, (_, i) => i + 1);
 
@@ -21,11 +27,83 @@ test('difficulty never decreases from one level to the next', () => {
     assert.ok(b.wordCount >= a.wordCount, `word count dropped at level ${lv}`);
     assert.ok(b.dirs.length >= a.dirs.length, `directions dropped at level ${lv}`);
     assert.ok(b.minLen >= a.minLen, `min word length dropped at level ${lv}`);
+    assert.ok(b.maxLen >= a.maxLen, `max word length dropped at level ${lv}`);
+    assert.ok(b.decoy >= a.decoy, `decoy level dropped at level ${lv}`);
   }
   assert.equal(levelConfig(1).size, 6);
   assert.equal(levelConfig(1).wordCount, 4);
   assert.equal(levelConfig(MAX_LEVELS).size, 12);
-  assert.equal(levelConfig(MAX_LEVELS).wordCount, 12);
+  assert.equal(levelConfig(MAX_LEVELS).wordCount, 16);
+});
+
+test('there are at least 500 levels, and no level asks for more than the grid can hold', () => {
+  assert.ok(MAX_LEVELS >= 500);
+  for (const lv of levels) {
+    const c = levelConfig(lv);
+    assert.ok(c.size <= 12 && c.wordCount <= 16, `level ${lv}`);
+    assert.ok(c.maxLen <= c.size || c.size === 12, `level ${lv}: words longer than the grid`);
+    assert.ok(c.maxLen <= 10 && c.minLen <= c.maxLen, `level ${lv}: bad length range`);
+  }
+});
+
+test('worlds tile the levels exactly: 25 worlds of 20, contiguous, uniquely named', () => {
+  assert.equal(WORLD_COUNT * WORLD_SIZE, MAX_LEVELS);
+  const names = new Set<string>();
+  let expectedFirst = 1;
+  for (let w = 1; w <= WORLD_COUNT; w++) {
+    const world = getWorld(w);
+    assert.equal(world.firstLevel, expectedFirst);
+    assert.equal(world.lastLevel - world.firstLevel + 1, WORLD_SIZE);
+    assert.ok(world.name && world.emoji);
+    names.add(world.name);
+    expectedFirst = world.lastLevel + 1;
+  }
+  assert.equal(names.size, WORLD_COUNT);
+  assert.equal(worldOf(1), 1);
+  assert.equal(worldOf(20), 1);
+  assert.equal(worldOf(21), 2);
+  assert.equal(worldOf(MAX_LEVELS), WORLD_COUNT);
+  assert.equal(getWorld(999).number, WORLD_COUNT, 'out-of-range worlds are clamped');
+});
+
+test('mystery levels start at 30 and come every 10th level', () => {
+  const mystery = levels.filter((lv) => levelConfig(lv).mystery);
+  assert.equal(mystery[0], 30);
+  assert.ok(mystery.every((lv) => lv % 10 === 0 && lv >= 30));
+  assert.equal(mystery.length, (MAX_LEVELS - 30) / 10 + 1);
+  assert.ok(!levelConfig(10).mystery && !levelConfig(20).mystery && !levelConfig(31).mystery);
+});
+
+test('decoys ramp in from level 20 up to a cap', () => {
+  assert.equal(levelConfig(19).decoy, 0);
+  assert.equal(levelConfig(20).decoy, 0);
+  assert.ok(levelConfig(60).decoy > 0 && levelConfig(60).decoy < levelConfig(200).decoy);
+  assert.equal(levelConfig(MAX_LEVELS).decoy, 0.75);
+});
+
+test('maskWord shows only the first letter and the length', () => {
+  assert.equal(maskWord('CAMEL'), 'C • • • •');
+  assert.equal(maskWord('ANTLION').replace(/ /g, '').length, 7);
+});
+
+test('full decoy fills the grid only with letters from the hidden words', () => {
+  const p = generatePuzzleFromSpec({
+    pool: THEMES[0].words,
+    size: 10,
+    wordCount: 6,
+    dirs: [[0, 1], [1, 0]],
+    minLen: 4,
+    maxLen: 8,
+    seed: 5,
+    decoy: 1,
+  });
+  const allowed = new Set(p.placements.flatMap((pl) => pl.word.split('')));
+  for (const row of p.grid) for (const ch of row) assert.ok(allowed.has(ch), `${ch} is not a letter of any hidden word`);
+});
+
+test('decoy 0 leaves puzzles unchanged compared with no decoy option', () => {
+  const base = { pool: THEMES[1].words, size: 8, wordCount: 5, dirs: [[0, 1], [1, 0]] as [number, number][], minLen: 4, maxLen: 7, seed: 9 };
+  assert.deepEqual(generatePuzzleFromSpec(base), generatePuzzleFromSpec({ ...base, decoy: 0 }));
 });
 
 test('out-of-range level numbers are clamped', () => {
@@ -57,8 +135,9 @@ test('a level is the same puzzle every time (so replays and progress are fair)',
   assert.notDeepEqual(generateLevelPuzzle(1).grid, generateLevelPuzzle(2).grid);
 });
 
-test('themes rotate so neighbouring levels feel different', () => {
+test('themes rotate so neighbouring levels feel different, and every theme gets used', () => {
   for (const lv of levels.slice(1)) assert.notEqual(levelConfig(lv).theme.id, levelConfig(lv - 1).theme.id);
+  assert.equal(new Set(levels.map((lv) => levelConfig(lv).theme.id)).size, THEMES.length);
 });
 
 test('completing the highest unlocked level unlocks the next one', () => {
@@ -116,9 +195,19 @@ test('sanitizeProgress rejects junk and clamps', () => {
   assert.equal(sanitizeProgress({ unlocked: 9999 }).unlocked, MAX_LEVELS);
   assert.equal(sanitizeProgress({ unlocked: -3 }).unlocked, 1);
   assert.equal(sanitizeProgress({ unlocked: 'x' }).unlocked, 1);
-  const p = sanitizeProgress({ unlocked: 4, stars: { '1': 3, '2': 7, abc: 2, '99': 1 }, best: { '1': 30, '2': -1, '3': 'x' } });
+  const p = sanitizeProgress({ unlocked: 4, stars: { '1': 3, '2': 7, abc: 2, '9999': 1 }, best: { '1': 30, '2': -1, '3': 'x' } });
   assert.deepEqual(p.stars, { '1': 3 });
   assert.deepEqual(p.best, { '1': 30 });
+});
+
+test('progress from the old 30-level campaign carries on to level 31', () => {
+  // Finishing the old last level (30) could not unlock anything then; it should now.
+  const old = sanitizeProgress({ unlocked: 30, stars: { '29': 3, '30': 2 }, best: {} });
+  assert.equal(old.unlocked, 31);
+  // An in-progress save is left alone.
+  assert.equal(sanitizeProgress({ unlocked: 12, stars: { '11': 3 }, best: {} }).unlocked, 12);
+  // Never beyond the last level.
+  assert.equal(sanitizeProgress({ unlocked: MAX_LEVELS, stars: { [String(MAX_LEVELS)]: 3 }, best: {} }).unlocked, MAX_LEVELS);
 });
 
 test('totalStars adds up', () => {

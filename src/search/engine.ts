@@ -176,6 +176,11 @@ export interface PuzzleSpec {
   minLen: number;
   maxLen: number;
   seed: number;
+  /**
+   * 0..1: chance that a filler cell uses a letter taken from the hidden words
+   * (instead of a uniformly random letter). Higher = more look-alike false starts.
+   */
+  decoy?: number;
 }
 
 /** Generate a puzzle from an explicit spec (used by levels and by the difficulty presets). */
@@ -201,8 +206,16 @@ export function generatePuzzleFromSpec(spec: PuzzleSpec): Puzzle {
 
   const { grid, placements } = best!;
   const fillRng = mulberry32(spec.seed ^ 0x9e3779b9);
+  const decoy = Math.max(0, Math.min(1, spec.decoy ?? 0));
+  const wordLetters = placements.map((p) => p.word).join('');
   const filled = grid.map((row) =>
-    row.map((c) => c ?? ALPHABET[Math.floor(fillRng() * ALPHABET.length)]),
+    row.map((c) => {
+      if (c !== null) return c;
+      if (decoy > 0 && wordLetters.length > 0 && fillRng() < decoy) {
+        return wordLetters[Math.floor(fillRng() * wordLetters.length)];
+      }
+      return ALPHABET[Math.floor(fillRng() * ALPHABET.length)];
+    }),
   );
   return { size: spec.size, grid: filled, placements };
 }

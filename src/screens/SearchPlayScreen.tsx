@@ -1,5 +1,14 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, PanResponder, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import {
+  Modal,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GradientBackground } from '../components/GradientBackground';
 import { glass, ink } from '../glass';
@@ -17,6 +26,7 @@ import {
   MAX_LEVELS,
   generateLevelPuzzle,
   levelConfig,
+  maskWord,
   recordLevelResult,
   type LevelProgress,
 } from '../search/levels';
@@ -74,6 +84,7 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
   const palette = paletteById(settings.palette);
   const cfg = DIFFICULTIES[settings.difficulty];
   const n = lc ? lc.size : cfg.size;
+  const { height: windowHeight } = useWindowDimensions();
 
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 2147483647));
   // A level is always the same puzzle; quick play makes a fresh one each time.
@@ -110,10 +121,12 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
             (area.h - 2 * PANEL_PAD - 8 - (n - 1) * GAP) / n,
           ),
         ),
-        18,
+        12,
         58,
       )
     : 0;
+  // Many words on a short screen: use compact chips so the grid keeps its room.
+  const compact = windowHeight < 700 && words.length > 10;
 
   // The pan responder is created once, so it reads the latest state through a ref.
   const live = useRef({ puzzle, words, found, cell, n, selection: [] as Cell[], won: false });
@@ -261,7 +274,11 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
     const p = left[Math.floor(Math.random() * left.length)];
     setHints((h) => h + 1);
     setHintCell({ row: p.row, col: p.col });
-    flash(`💡 Look for “${p.word}” — it starts at the ring`);
+    flash(
+      lc?.mystery
+        ? `💡 A ${p.word.length}-letter word starts at the ring`
+        : `💡 Look for “${p.word}” — it starts at the ring`,
+    );
     feedback.tap();
     if (hintTimer.current) clearTimeout(hintTimer.current);
     hintTimer.current = setTimeout(() => setHintCell(null), 3500);
@@ -293,7 +310,11 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
               {lc ? `Level ${lc.level}` : `${theme.emoji} ${theme.label}`}
             </Text>
             <Text style={[glass.text, styles.sub]}>
-              {lc ? `${theme.emoji} ${theme.label} · ${n}×${n}` : `${cfg.label} · ${n}×${n}`}
+              {lc
+                ? lc.mystery
+                  ? `❓ Mystery · ${theme.label} · ${n}×${n}`
+                  : `${theme.emoji} ${theme.label} · ${n}×${n}`
+                : `${cfg.label} · ${n}×${n}`}
             </Text>
           </View>
           <View style={[styles.round, styles.timerBox]}>
@@ -314,8 +335,16 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
           {words.map((w) => {
             const f = found[w];
             return (
-              <View key={w} style={[styles.word, f && { backgroundColor: f.color }]}>
-                <Text style={[styles.wordText, f && { color: ink, textDecorationLine: 'line-through' }]}>{w}</Text>
+              <View key={w} style={[styles.word, compact && styles.wordCompact, f && { backgroundColor: f.color }]}>
+                <Text
+                  style={[
+                    styles.wordText,
+                    compact && styles.wordTextCompact,
+                    f && { color: ink, textDecorationLine: 'line-through' },
+                  ]}
+                >
+                  {lc?.mystery && !f ? maskWord(w) : w}
+                </Text>
               </View>
             );
           })}
@@ -431,6 +460,8 @@ const styles = StyleSheet.create({
   progressFill: { height: 8, borderRadius: 4, backgroundColor: '#ffd166' },
   words: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6, paddingHorizontal: 12, marginTop: 10 },
   word: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.24)' },
+  wordCompact: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 11 },
+  wordTextCompact: { fontSize: 11, letterSpacing: 0.2 },
   wordText: { color: '#fff', fontWeight: '800', fontSize: 13, letterSpacing: 0.5 },
   gridArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   toast: { position: 'absolute', top: 4, maxWidth: '92%', backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 9 },

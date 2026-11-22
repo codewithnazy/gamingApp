@@ -2,7 +2,62 @@
 import { ALL_DIRS, generatePuzzleFromSpec, type Dir, type Puzzle } from './engine.ts';
 import { THEMES, type WordTheme } from './themes.ts';
 
-export const MAX_LEVELS = 30;
+export const MAX_LEVELS = 500;
+export const WORLD_SIZE = 20;
+export const WORLD_COUNT = MAX_LEVELS / WORLD_SIZE; // 25
+
+export interface World {
+  number: number; // 1-based
+  name: string;
+  emoji: string;
+  firstLevel: number;
+  lastLevel: number;
+}
+
+const WORLD_NAMES: [string, string][] = [
+  ['Meadow Start', '🌼'],
+  ['Sunny Shores', '🏖️'],
+  ['Whisper Woods', '🌲'],
+  ['Crystal Caves', '💎'],
+  ['Cloud Kingdom', '☁️'],
+  ['Desert Dunes', '🏜️'],
+  ['Frosty Peaks', '🏔️'],
+  ['Coral Reef', '🐠'],
+  ['Jungle Run', '🦜'],
+  ['Volcano Rim', '🌋'],
+  ['Starlight City', '🌃'],
+  ['Pirate Bay', '🏴‍☠️'],
+  ['Enchanted Garden', '🧚'],
+  ['Thunder Plains', '⚡'],
+  ['Mystic Temple', '🛕'],
+  ['Neon Streets', '🌆'],
+  ['Dragon Isles', '🐉'],
+  ['Sky Harbor', '⛵'],
+  ['Midnight Market', '🏮'],
+  ['Ancient Ruins', '🗿'],
+  ['Candy Canyon', '🍭'],
+  ['Moonlit Lake', '🌙'],
+  ['Clockwork Town', '⚙️'],
+  ['Aurora Fields', '🌌'],
+  ['Grand Summit', '👑'],
+];
+
+export const worldOf = (level: number): number =>
+  Math.min(WORLD_COUNT, Math.max(1, Math.ceil(level / WORLD_SIZE)));
+
+export function getWorld(n: number): World {
+  const number = Math.min(WORLD_COUNT, Math.max(1, Math.floor(n) || 1));
+  const [name, emoji] = WORLD_NAMES[number - 1];
+  return {
+    number,
+    name,
+    emoji,
+    firstLevel: (number - 1) * WORLD_SIZE + 1,
+    lastLevel: number * WORLD_SIZE,
+  };
+}
+
+export type Tier = 'Warm-up' | 'Diagonals' | 'Backwards' | 'Expert' | 'Master' | 'Legend';
 
 export interface LevelConfig {
   level: number;
@@ -14,25 +69,33 @@ export interface LevelConfig {
   maxLen: number;
   /** Fixed per level, so a level is the same puzzle every time you play it. */
   seed: number;
-  tier: 'Warm-up' | 'Diagonals' | 'Backwards' | 'Expert';
+  /** 0..1 share of filler letters borrowed from the hidden words (look-alike traps). */
+  decoy: number;
+  /** Mystery level: the word list is hidden (only first letters shown). */
+  mystery: boolean;
+  tier: Tier;
   tierBlurb: string;
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
 /**
- * Difficulty ramps up with the level:
- *  - grid grows 6x6 -> 12x12 (a size step every 3 levels)
- *  - words grow 4 -> 12 (one more every 2 levels)
- *  - directions: across/down -> diagonals -> every direction (backwards)
- *  - expert levels (20+) only use longer words
+ * Difficulty ramps up with the level, using a different lever in each phase:
+ *  - levels 1-19:   grid grows 6x6 -> 12x12, words 4 -> 12, directions widen
+ *                   (across/down -> diagonals -> every direction)
+ *  - levels 20-59:  full 12x12 grids; the word count keeps climbing
+ *  - levels 60-199: decoy filler letters make false starts likelier; words up to 10 letters
+ *  - levels 200+:   maximum decoys
+ *  - from level 30, every 10th level is a Mystery level (word list hidden)
+ * The word count tops out at 16.
  */
 export function levelConfig(level: number): LevelConfig {
   const lv = clamp(Math.floor(level) || 1, 1, MAX_LEVELS);
   const size = Math.min(12, 6 + Math.floor((lv - 1) / 3));
-  const wordCount = Math.min(12, 4 + Math.floor((lv - 1) / 2));
+  const wordCount = lv <= 17 ? 4 + Math.floor((lv - 1) / 2) : Math.min(16, 12 + Math.floor((lv - 17) / 25));
+  const decoy = clamp((lv - 20) / 240, 0, 0.75);
 
-  let tier: LevelConfig['tier'];
+  let tier: Tier;
   let tierBlurb: string;
   let dirs: Dir[];
   if (lv <= 4) {
@@ -55,9 +118,17 @@ export function levelConfig(level: number): LevelConfig {
     tier = 'Backwards';
     tierBlurb = 'Every direction, even backwards';
     dirs = ALL_DIRS;
-  } else {
+  } else if (lv <= 59) {
     tier = 'Expert';
-    tierBlurb = 'Long words, every direction';
+    tierBlurb = 'Packed grids, every direction';
+    dirs = ALL_DIRS;
+  } else if (lv <= 199) {
+    tier = 'Master';
+    tierBlurb = 'Look-alike decoy letters';
+    dirs = ALL_DIRS;
+  } else {
+    tier = 'Legend';
+    tierBlurb = 'Maximum decoys';
     dirs = ALL_DIRS;
   }
 
@@ -67,9 +138,11 @@ export function levelConfig(level: number): LevelConfig {
     size,
     wordCount,
     dirs,
-    minLen: lv >= 20 ? 6 : lv >= 10 ? 5 : 4,
-    maxLen: Math.min(8, size),
+    minLen: lv >= 10 ? 5 : 4,
+    maxLen: lv >= 60 ? 10 : Math.min(8, size),
     seed: 1000 + lv * 7919,
+    decoy,
+    mystery: lv >= 30 && lv % 10 === 0,
     tier,
     tierBlurb,
   };
@@ -85,7 +158,13 @@ export function generateLevelPuzzle(level: number): Puzzle {
     minLen: c.minLen,
     maxLen: c.maxLen,
     seed: c.seed,
+    decoy: c.decoy,
   });
+}
+
+/** Mystery levels show only the first letter and length of each unfound word. */
+export function maskWord(word: string): string {
+  return word[0] + ' ' + Array(word.length - 1).fill('•').join(' ');
 }
 
 // ---- Progress ---------------------------------------------------------------
@@ -159,7 +238,10 @@ export function sanitizeProgress(raw: unknown): LevelProgress {
       if (Number.isInteger(lv) && lv >= 1 && lv <= MAX_LEVELS && typeof v === 'number' && v >= 0) best[k] = v;
     }
   }
-  return { unlocked, stars, best };
+  // Progress saved by an older, shorter campaign: a completed last level now leads onward.
+  let open = unlocked;
+  while (open < MAX_LEVELS && stars[String(open)] !== undefined) open++;
+  return { unlocked: open, stars, best };
 }
 
 export const totalStars = (p: LevelProgress) => Object.values(p.stars).reduce<number>((a, s) => a + s, 0);

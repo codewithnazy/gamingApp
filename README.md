@@ -7,19 +7,24 @@ A colourful word-game collection for mobile (React Native + Expo, TypeScript).
 ### 🔎 Word Search
 Drag across the letters to find every hidden word, forwards or backwards.
 
-**🏆 Levels** — 30 levels that get steadily harder. Finish a level to unlock the next one
-and earn up to ⭐⭐⭐ (3 stars with no hints, 2 with up to two hints, otherwise 1).
+**🏆 Levels** — **500 levels** in 25 themed worlds of 20 (Meadow Start → Grand Summit). Finish a
+level to unlock the next one and earn up to ⭐⭐⭐ (3 stars with no hints, 2 with up to two hints,
+otherwise 1). Pick a world with the ‹ › arrows, or tap the summary card to jump to your level.
 
-| Levels | Tier | What changes |
+| Levels | Tier | What makes it harder |
 |---|---|---|
-| 1–4 | Warm-up | 6×6 grids, words run across and down |
-| 5–9 | Diagonals | + diagonal words |
-| 10–19 | Backwards | every direction, even backwards; longer words |
-| 20–30 | Expert | 6–8 letter words only, up to 12×12 with 12 words |
+| 1–4 | Warm-up | 6×6 grids, words across and down |
+| 5–9 | Diagonals | adds diagonal words |
+| 10–19 | Backwards | every direction, even backwards; grids grow to 12×12 |
+| 20–59 | Expert | full 12×12 grids, up to 15 words |
+| 60–199 | Master | **decoy letters** (filler borrowed from the hidden words) and words up to 10 letters |
+| 200–500 | Legend | maximum decoys, 16 words |
 
-The grid grows every 3 levels (6×6 → 12×12), the word count every 2 levels (4 → 12), and the
-theme changes each level. A level is always the same puzzle, so replays are fair; progress,
-stars and best times are saved on the device.
+Every 10th level from level 30 is a **❓ Mystery level**: the word list is hidden (you only see each
+word's first letter and length) and hints say how long the word is, not what it is.
+
+The theme changes each level (21 themes). A level is always the same puzzle, so replays are fair;
+progress, stars and best times are saved on the device.
 
 **🎲 Quick play** — pick your own theme and difficulty for a fresh random puzzle.
 
@@ -27,7 +32,7 @@ stars and best times are saved on the device.
 
 | Option | Choices |
 |---|---|
-| Theme (Quick play) | Animals, Food, Space, Ocean, Sports, Countries, Gaming |
+| Theme (Quick play) | 21 themes: Animals, Food, Space, Ocean, Sports, Countries, Gaming, Weather, Music, Jobs, Nature, Transport, Science, School, Home, Cities, Fantasy, Insects, Clothes, Kitchen, Colors |
 | Difficulty (Quick play) | **Easy** 8×8, 6 words, across/down · **Medium** 10×10, 8 words, + diagonals · **Hard** 12×12, 10 words, all 8 directions |
 | Timer | On (records your best time per theme + difficulty) or off for a relaxed game |
 | Haptics | On / off |
@@ -53,7 +58,7 @@ npm run typecheck
 
 - `App.tsx` — screen navigation, settings and best-times state, Android back button
 - `src/search/engine.ts` — pure word-search logic: puzzle generation, drag snapping, matching
-- `src/search/levels.ts` — level configs, level puzzles, progress and unlocking
+- `src/search/levels.ts` — 500 level configs, worlds, level puzzles, progress and unlocking
 - `src/search/themes.ts` — word lists, background palettes, found-word colours
 - `src/screens/` — `HomeScreen`, `SearchSetupScreen`, `SearchPlayScreen`, `HeistScreen`
 - `src/components/` — `GradientBackground`, and the Word Heist `Board`/`Keyboard`/modals
@@ -63,9 +68,9 @@ npm run typecheck
 
 ## Notes and next steps
 
-- Word lists are small (about 30 words per theme). Add more to `src/search/themes.ts`;
-  the tests validate every list against all three difficulties.
-- Ideas: a daily seeded puzzle, more than 30 levels, custom word lists, more themes, sound effects.
+- Word lists are modest (about 35 words per theme), so words repeat across 500 levels. Add more to
+  `src/search/themes.ts`; the tests validate every list against all three difficulties.
+- Ideas: a daily seeded puzzle, custom word lists, more themes, sound effects.
 - Word Heist's daily word uses the device's local date, and its rival is flavour text
   (no backend).
 - `bundleIdentifier` / `package` in `app.json` are placeholders

@@ -1,11 +1,21 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GradientBackground } from '../components/GradientBackground';
 import { glass, ink } from '../glass';
 import * as feedback from '../haptics';
 import { DIFFICULTIES, formatTime, type Difficulty } from '../search/engine';
-import { MAX_LEVELS, levelConfig, totalStars, type LevelProgress } from '../search/levels';
+import {
+  MAX_LEVELS,
+  WORLD_COUNT,
+  WORLD_SIZE,
+  getWorld,
+  levelConfig,
+  totalStars,
+  worldOf,
+  type LevelProgress,
+} from '../search/levels';
 import { PALETTES, THEMES, paletteById } from '../search/themes';
 import type { SearchMode, Settings } from '../settings';
 import type { BestTimes } from '../storage';
@@ -23,18 +33,6 @@ interface Props {
 const COLUMNS = 5;
 const TILE_GAP = 10;
 
-// Levels grouped by tier, in order, for the level map.
-const TIERS = (() => {
-  const groups: { tier: string; blurb: string; levels: number[] }[] = [];
-  for (let lv = 1; lv <= MAX_LEVELS; lv++) {
-    const c = levelConfig(lv);
-    const last = groups[groups.length - 1];
-    if (last && last.tier === c.tier) last.levels.push(lv);
-    else groups.push({ tier: c.tier, blurb: c.tierBlurb, levels: [lv] });
-  }
-  return groups;
-})();
-
 export function SearchSetupScreen({ settings, best, progress, onChange, onStartQuick, onStartLevel, onBack }: Props) {
   const { width } = useWindowDimensions();
   const palette = paletteById(settings.palette);
@@ -43,6 +41,18 @@ export function SearchSetupScreen({ settings, best, progress, onChange, onStartQ
   const tile = Math.floor((width - 32 - (COLUMNS - 1) * TILE_GAP) / COLUMNS);
   const current = progress.unlocked;
   const cur = levelConfig(current);
+  const [worldNo, setWorldNo] = useState(() => worldOf(progress.unlocked));
+  const world = getWorld(worldNo);
+  const worldLevels = Array.from({ length: WORLD_SIZE }, (_, i) => world.firstLevel + i);
+  const worldDone = worldLevels.filter((lv) => progress.stars[String(lv)] !== undefined).length;
+  const worldStars = worldLevels.reduce((n, lv) => n + (progress.stars[String(lv)] ?? 0), 0);
+  const first = levelConfig(world.firstLevel);
+  const last = levelConfig(world.lastLevel);
+  const range = (a: number, b: number, fmt: (n: number) => string) => (a === b ? fmt(a) : `${fmt(a)}–${fmt(b)}`);
+  const goWorld = (n: number) => {
+    feedback.tap();
+    setWorldNo(Math.min(WORLD_COUNT, Math.max(1, n)));
+  };
   const allDone = progress.stars[String(MAX_LEVELS)] !== undefined;
 
   const choose = (patch: Partial<Settings>) => {
@@ -69,45 +79,88 @@ export function SearchSetupScreen({ settings, best, progress, onChange, onStartQ
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           {isLevels ? (
             <>
-              <View style={[glass.panel, styles.summary]}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Jump to your current level"
+                onPress={() => goWorld(worldOf(current))}
+                style={[glass.panel, styles.summary]}
+              >
                 <View style={{ flex: 1 }}>
                   <Text style={[glass.text, styles.summaryTitle]}>
                     {allDone ? '🏆 All levels complete!' : `Level ${current} unlocked`}
                   </Text>
                   <Text style={styles.summarySub}>
                     {cur.theme.emoji} {cur.theme.label} · {cur.size}×{cur.size} · {cur.wordCount} words
+                    {cur.mystery ? ' · ❓ Mystery' : ''}
                   </Text>
                 </View>
                 <Text style={[glass.text, styles.summaryStars]}>
                   ⭐ {totalStars(progress)}
                   <Text style={styles.summaryStarsMax}>/{MAX_LEVELS * 3}</Text>
                 </Text>
+              </Pressable>
+
+              <View style={styles.worldBar}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Previous world"
+                  disabled={worldNo <= 1}
+                  onPress={() => goWorld(worldNo - 1)}
+                  style={[styles.arrow, worldNo <= 1 && { opacity: 0.35 }]}
+                >
+                  <Text style={styles.arrowText}>‹</Text>
+                </Pressable>
+                <View style={styles.worldTitleWrap}>
+                  <Text style={[glass.text, styles.worldTitle]} numberOfLines={1}>
+                    {world.emoji} {world.name}
+                  </Text>
+                  <Text style={styles.worldSub}>
+                    World {world.number} of {WORLD_COUNT} · Levels {world.firstLevel}–{world.lastLevel}
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Next world"
+                  disabled={worldNo >= WORLD_COUNT}
+                  onPress={() => goWorld(worldNo + 1)}
+                  style={[styles.arrow, worldNo >= WORLD_COUNT && { opacity: 0.35 }]}
+                >
+                  <Text style={styles.arrowText}>›</Text>
+                </Pressable>
               </View>
 
-              {TIERS.map((g) => (
-                <View key={g.tier}>
-                  <Text style={[glass.text, styles.section]}>
-                    {g.tier} <Text style={styles.sectionSub}>· {g.blurb}</Text>
-                  </Text>
-                  <View style={styles.tiles}>
-                    {g.levels.map((lv) => (
-                      <LevelTile
-                        key={lv}
-                        level={lv}
-                        size={tile}
-                        locked={lv > progress.unlocked}
-                        isCurrent={lv === progress.unlocked}
-                        stars={progress.stars[String(lv)] ?? 0}
-                        emoji={levelConfig(lv).theme.emoji}
-                        onPress={() => {
-                          feedback.success();
-                          onStartLevel(lv);
-                        }}
-                      />
-                    ))}
-                  </View>
+              <View style={styles.worldProgress}>
+                <View style={styles.worldTrack}>
+                  <View style={[styles.worldFill, { width: `${(worldDone / WORLD_SIZE) * 100}%` }]} />
                 </View>
-              ))}
+                <Text style={[glass.text, styles.worldCount]}>
+                  {worldDone}/{WORLD_SIZE} · ⭐ {worldStars}/{WORLD_SIZE * 3}
+                </Text>
+              </View>
+              <Text style={styles.worldInfo}>
+                {first.tier === last.tier ? first.tier : `${first.tier} → ${last.tier}`} ·{' '}
+                {range(first.size, last.size, (n) => `${n}×${n}`)} grids ·{' '}
+                {range(first.wordCount, last.wordCount, (n) => `${n}`)} words
+                {worldLevels.some((lv) => levelConfig(lv).mystery) ? ' · ❓ Mystery levels' : ''}
+              </Text>
+
+              <View style={styles.tiles}>
+                {worldLevels.map((lv) => (
+                  <LevelTile
+                    key={lv}
+                    level={lv}
+                    size={tile}
+                    locked={lv > progress.unlocked}
+                    isCurrent={lv === progress.unlocked}
+                    stars={progress.stars[String(lv)] ?? 0}
+                    emoji={levelConfig(lv).mystery ? '❓' : levelConfig(lv).theme.emoji}
+                    onPress={() => {
+                      feedback.success();
+                      onStartLevel(lv);
+                    }}
+                  />
+                ))}
+              </View>
             </>
           ) : (
             <>
@@ -315,6 +368,17 @@ const styles = StyleSheet.create({
   summarySub: { color: 'rgba(255,255,255,0.88)', fontSize: 13, marginTop: 3 },
   summaryStars: { fontSize: 22, fontWeight: '900' },
   summaryStarsMax: { fontSize: 13, fontWeight: '700', opacity: 0.8 },
+  worldBar: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 18 },
+  arrow: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.28)' },
+  arrowText: { color: '#fff', fontSize: 28, lineHeight: 32, fontWeight: '700' },
+  worldTitleWrap: { flex: 1, alignItems: 'center' },
+  worldTitle: { fontSize: 20, fontWeight: '900' },
+  worldSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
+  worldProgress: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
+  worldTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.25)', overflow: 'hidden' },
+  worldFill: { height: 8, borderRadius: 4, backgroundColor: '#ffd166' },
+  worldCount: { fontSize: 12, fontWeight: '800' },
+  worldInfo: { color: 'rgba(255,255,255,0.88)', fontSize: 12, textAlign: 'center', marginTop: 8, marginBottom: 12 },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: TILE_GAP },
   tile: { borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.28)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)' },
   tileLocked: { backgroundColor: 'rgba(0,0,0,0.16)', borderColor: 'rgba(255,255,255,0.12)', opacity: 0.7 },

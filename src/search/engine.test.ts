@@ -21,7 +21,7 @@ const DIFFS: Difficulty[] = ['easy', 'medium', 'hard'];
 test('theme word lists are clean and big enough for every difficulty', () => {
   for (const t of THEMES) {
     assert.equal(new Set(t.words).size, t.words.length, `${t.id}: duplicate words`);
-    for (const w of t.words) assert.match(w, /^[A-Z]{4,8}$/, `${t.id}: bad word ${w}`);
+    for (const w of t.words) assert.match(w, /^[A-Z]{4,10}$/, `${t.id}: bad word ${w}`);
     for (const d of DIFFS) {
       const cfg = DIFFICULTIES[d];
       const usable = t.words.filter((w) => w.length >= cfg.minLen && w.length <= cfg.maxLen);
