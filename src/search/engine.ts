@@ -168,37 +168,60 @@ function tryPlace(
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
+export interface PuzzleSpec {
+  pool: readonly string[];
+  size: number;
+  wordCount: number;
+  dirs: readonly Dir[];
+  minLen: number;
+  maxLen: number;
+  seed: number;
+}
+
+/** Generate a puzzle from an explicit spec (used by levels and by the difficulty presets). */
+export function generatePuzzleFromSpec(spec: PuzzleSpec): Puzzle {
+  let best: { grid: (string | null)[][]; placements: Placement[] } | null = null;
+
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const rng = mulberry32(spec.seed + attempt * 7919);
+    const words = pickWords(spec.pool, spec.wordCount, spec.minLen, spec.maxLen, rng).sort(
+      (a, b) => b.length - a.length,
+    );
+    const grid: (string | null)[][] = Array.from({ length: spec.size }, () =>
+      Array(spec.size).fill(null),
+    );
+    const placements: Placement[] = [];
+    for (const w of words) {
+      const p = tryPlace(grid, w, spec.dirs, rng);
+      if (p) placements.push(p);
+    }
+    if (!best || placements.length > best.placements.length) best = { grid, placements };
+    if (placements.length === words.length && words.length === spec.wordCount) break;
+  }
+
+  const { grid, placements } = best!;
+  const fillRng = mulberry32(spec.seed ^ 0x9e3779b9);
+  const filled = grid.map((row) =>
+    row.map((c) => c ?? ALPHABET[Math.floor(fillRng() * ALPHABET.length)]),
+  );
+  return { size: spec.size, grid: filled, placements };
+}
+
 export function generatePuzzle(opts: {
   pool: readonly string[];
   difficulty: Difficulty;
   seed: number;
 }): Puzzle {
   const cfg = DIFFICULTIES[opts.difficulty];
-  let best: { grid: (string | null)[][]; placements: Placement[] } | null = null;
-
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const rng = mulberry32(opts.seed + attempt * 7919);
-    const words = pickWords(opts.pool, cfg.wordCount, cfg.minLen, cfg.maxLen, rng).sort(
-      (a, b) => b.length - a.length,
-    );
-    const grid: (string | null)[][] = Array.from({ length: cfg.size }, () =>
-      Array(cfg.size).fill(null),
-    );
-    const placements: Placement[] = [];
-    for (const w of words) {
-      const p = tryPlace(grid, w, cfg.dirs, rng);
-      if (p) placements.push(p);
-    }
-    if (!best || placements.length > best.placements.length) best = { grid, placements };
-    if (placements.length === words.length && words.length === cfg.wordCount) break;
-  }
-
-  const { grid, placements } = best!;
-  const fillRng = mulberry32(opts.seed ^ 0x9e3779b9);
-  const filled = grid.map((row) =>
-    row.map((c) => c ?? ALPHABET[Math.floor(fillRng() * ALPHABET.length)]),
-  );
-  return { size: cfg.size, grid: filled, placements };
+  return generatePuzzleFromSpec({
+    pool: opts.pool,
+    size: cfg.size,
+    wordCount: cfg.wordCount,
+    dirs: cfg.dirs,
+    minLen: cfg.minLen,
+    maxLen: cfg.maxLen,
+    seed: opts.seed,
+  });
 }
 
 export function cellsOf(p: Placement): Cell[] {

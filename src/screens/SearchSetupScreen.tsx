@@ -1,25 +1,49 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { GradientBackground } from '../components/GradientBackground';
 import { glass, ink } from '../glass';
 import * as feedback from '../haptics';
 import { DIFFICULTIES, formatTime, type Difficulty } from '../search/engine';
+import { MAX_LEVELS, levelConfig, totalStars, type LevelProgress } from '../search/levels';
 import { PALETTES, THEMES, paletteById } from '../search/themes';
-import type { Settings } from '../settings';
+import type { SearchMode, Settings } from '../settings';
 import type { BestTimes } from '../storage';
-import { GradientBackground } from '../components/GradientBackground';
 
 interface Props {
   settings: Settings;
   best: BestTimes;
+  progress: LevelProgress;
   onChange: (patch: Partial<Settings>) => void;
-  onStart: () => void;
+  onStartQuick: () => void;
+  onStartLevel: (level: number) => void;
   onBack: () => void;
 }
 
-export function SearchSetupScreen({ settings, best, onChange, onStart, onBack }: Props) {
+const COLUMNS = 5;
+const TILE_GAP = 10;
+
+// Levels grouped by tier, in order, for the level map.
+const TIERS = (() => {
+  const groups: { tier: string; blurb: string; levels: number[] }[] = [];
+  for (let lv = 1; lv <= MAX_LEVELS; lv++) {
+    const c = levelConfig(lv);
+    const last = groups[groups.length - 1];
+    if (last && last.tier === c.tier) last.levels.push(lv);
+    else groups.push({ tier: c.tier, blurb: c.tierBlurb, levels: [lv] });
+  }
+  return groups;
+})();
+
+export function SearchSetupScreen({ settings, best, progress, onChange, onStartQuick, onStartLevel, onBack }: Props) {
+  const { width } = useWindowDimensions();
   const palette = paletteById(settings.palette);
   const bestKey = `${settings.theme}:${settings.difficulty}`;
+  const isLevels = settings.mode === 'levels';
+  const tile = Math.floor((width - 32 - (COLUMNS - 1) * TILE_GAP) / COLUMNS);
+  const current = progress.unlocked;
+  const cur = levelConfig(current);
+  const allDone = progress.stars[String(MAX_LEVELS)] !== undefined;
 
   const choose = (patch: Partial<Settings>) => {
     feedback.tap();
@@ -37,52 +61,103 @@ export function SearchSetupScreen({ settings, best, onChange, onStart, onBack }:
           <View style={styles.backSpacer} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <Text style={[glass.text, styles.section]}>Theme</Text>
-          <View style={styles.chips}>
-            {THEMES.map((t) => {
-              const on = t.id === settings.theme;
-              return (
-                <Pressable
-                  key={t.id}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  onPress={() => choose({ theme: t.id })}
-                  style={[styles.chip, on && styles.chipOn]}
-                >
-                  <Text style={styles.chipEmoji}>{t.emoji}</Text>
-                  <Text style={[styles.chipText, on && styles.chipTextOn]}>{t.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+        <View style={styles.modeRow}>
+          <ModeTab label="🏆  Levels" on={isLevels} onPress={() => choose({ mode: 'levels' as SearchMode })} />
+          <ModeTab label="🎲  Quick play" on={!isLevels} onPress={() => choose({ mode: 'quick' as SearchMode })} />
+        </View>
 
-          <Text style={[glass.text, styles.section]}>Difficulty</Text>
-          <View style={styles.diffRow}>
-            {(Object.keys(DIFFICULTIES) as Difficulty[]).map((d) => {
-              const cfg = DIFFICULTIES[d];
-              const on = d === settings.difficulty;
-              return (
-                <Pressable
-                  key={d}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  onPress={() => choose({ difficulty: d })}
-                  style={[styles.diff, on && styles.chipOn]}
-                >
-                  <Text style={[styles.diffTitle, on && styles.chipTextOn]}>{cfg.label}</Text>
-                  <Text style={[styles.diffSub, on && styles.diffSubOn]}>
-                    {cfg.size}×{cfg.size}
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          {isLevels ? (
+            <>
+              <View style={[glass.panel, styles.summary]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[glass.text, styles.summaryTitle]}>
+                    {allDone ? '🏆 All levels complete!' : `Level ${current} unlocked`}
                   </Text>
-                  <Text style={[styles.diffSub, on && styles.diffSubOn]}>{cfg.wordCount} words</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Text style={[glass.text, styles.hint]}>
-            {DIFFICULTIES[settings.difficulty].blurb}
-            {settings.timer && best[bestKey] !== undefined ? `  ·  🏆 Best ${formatTime(best[bestKey])}` : ''}
-          </Text>
+                  <Text style={styles.summarySub}>
+                    {cur.theme.emoji} {cur.theme.label} · {cur.size}×{cur.size} · {cur.wordCount} words
+                  </Text>
+                </View>
+                <Text style={[glass.text, styles.summaryStars]}>
+                  ⭐ {totalStars(progress)}
+                  <Text style={styles.summaryStarsMax}>/{MAX_LEVELS * 3}</Text>
+                </Text>
+              </View>
+
+              {TIERS.map((g) => (
+                <View key={g.tier}>
+                  <Text style={[glass.text, styles.section]}>
+                    {g.tier} <Text style={styles.sectionSub}>· {g.blurb}</Text>
+                  </Text>
+                  <View style={styles.tiles}>
+                    {g.levels.map((lv) => (
+                      <LevelTile
+                        key={lv}
+                        level={lv}
+                        size={tile}
+                        locked={lv > progress.unlocked}
+                        isCurrent={lv === progress.unlocked}
+                        stars={progress.stars[String(lv)] ?? 0}
+                        emoji={levelConfig(lv).theme.emoji}
+                        onPress={() => {
+                          feedback.success();
+                          onStartLevel(lv);
+                        }}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </>
+          ) : (
+            <>
+              <Text style={[glass.text, styles.section]}>Theme</Text>
+              <View style={styles.chips}>
+                {THEMES.map((t) => {
+                  const on = t.id === settings.theme;
+                  return (
+                    <Pressable
+                      key={t.id}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      onPress={() => choose({ theme: t.id })}
+                      style={[styles.chip, on && styles.chipOn]}
+                    >
+                      <Text style={styles.chipEmoji}>{t.emoji}</Text>
+                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{t.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={[glass.text, styles.section]}>Difficulty</Text>
+              <View style={styles.diffRow}>
+                {(Object.keys(DIFFICULTIES) as Difficulty[]).map((d) => {
+                  const cfg = DIFFICULTIES[d];
+                  const on = d === settings.difficulty;
+                  return (
+                    <Pressable
+                      key={d}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      onPress={() => choose({ difficulty: d })}
+                      style={[styles.diff, on && styles.chipOn]}
+                    >
+                      <Text style={[styles.diffTitle, on && styles.chipTextOn]}>{cfg.label}</Text>
+                      <Text style={[styles.diffSub, on && styles.diffSubOn]}>
+                        {cfg.size}×{cfg.size}
+                      </Text>
+                      <Text style={[styles.diffSub, on && styles.diffSubOn]}>{cfg.wordCount} words</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={[glass.text, styles.hint]}>
+                {DIFFICULTIES[settings.difficulty].blurb}
+                {settings.timer && best[bestKey] !== undefined ? `  ·  🏆 Best ${formatTime(best[bestKey])}` : ''}
+              </Text>
+            </>
+          )}
 
           <Text style={[glass.text, styles.section]}>Options</Text>
           <View style={[glass.panel, styles.options]}>
@@ -134,15 +209,72 @@ export function SearchSetupScreen({ settings, best, onChange, onStart, onBack }:
             accessibilityRole="button"
             onPress={() => {
               feedback.success();
-              onStart();
+              if (isLevels) onStartLevel(current);
+              else onStartQuick();
             }}
             style={({ pressed }) => [styles.start, pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}
           >
-            <Text style={styles.startText}>▶  Start puzzle</Text>
+            <Text style={styles.startText}>
+              {isLevels
+                ? `▶  ${allDone ? 'Replay' : current === 1 && !progress.stars['1'] ? 'Start' : 'Continue'} · Level ${current}`
+                : '▶  Start puzzle'}
+            </Text>
           </Pressable>
         </View>
       </SafeAreaView>
     </GradientBackground>
+  );
+}
+
+function ModeTab(props: { label: string; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: props.on }}
+      onPress={props.onPress}
+      style={[styles.modeTab, props.on && styles.modeTabOn]}
+    >
+      <Text style={[styles.modeText, props.on && { color: ink }]}>{props.label}</Text>
+    </Pressable>
+  );
+}
+
+function LevelTile(props: {
+  level: number;
+  size: number;
+  locked: boolean;
+  isCurrent: boolean;
+  stars: number;
+  emoji: string;
+  onPress: () => void;
+}) {
+  const { level, size, locked, isCurrent, stars } = props;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={locked ? `Level ${level}, locked` : `Level ${level}, ${stars} of 3 stars`}
+      accessibilityState={{ disabled: locked }}
+      disabled={locked}
+      onPress={props.onPress}
+      style={({ pressed }) => [
+        styles.tile,
+        { width: size, height: size + 8 },
+        locked && styles.tileLocked,
+        !locked && stars > 0 && styles.tileDone,
+        isCurrent && styles.tileCurrent,
+        pressed && { transform: [{ scale: 0.94 }] },
+      ]}
+    >
+      {locked ? (
+        <Text style={styles.lock}>🔒</Text>
+      ) : (
+        <>
+          <Text style={styles.tileEmoji}>{props.emoji}</Text>
+          <Text style={[styles.tileNum, isCurrent && { color: ink }]}>{level}</Text>
+          <Text style={styles.tileStars}>{stars > 0 ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : isCurrent ? 'PLAY' : '☆☆☆'}</Text>
+        </>
+      )}
+    </Pressable>
   );
 }
 
@@ -171,8 +303,27 @@ const styles = StyleSheet.create({
   backSpacer: { width: 44, height: 44 },
   backText: { color: '#fff', fontSize: 30, lineHeight: 34, fontWeight: '700' },
   title: { fontSize: 24, fontWeight: '900', letterSpacing: 1 },
+  modeRow: { flexDirection: 'row', marginHorizontal: 16, marginTop: 2, padding: 4, borderRadius: 24, backgroundColor: 'rgba(0,0,0,0.25)' },
+  modeTab: { flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 20 },
+  modeTabOn: { backgroundColor: '#fff' },
+  modeText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   scroll: { paddingHorizontal: 16, paddingBottom: 16 },
   section: { fontSize: 14, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 18, marginBottom: 10, opacity: 0.95 },
+  sectionSub: { fontSize: 12, fontWeight: '600', letterSpacing: 0.3, textTransform: 'none' },
+  summary: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, marginTop: 14 },
+  summaryTitle: { fontSize: 18, fontWeight: '900' },
+  summarySub: { color: 'rgba(255,255,255,0.88)', fontSize: 13, marginTop: 3 },
+  summaryStars: { fontSize: 22, fontWeight: '900' },
+  summaryStarsMax: { fontSize: 13, fontWeight: '700', opacity: 0.8 },
+  tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: TILE_GAP },
+  tile: { borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.28)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)' },
+  tileLocked: { backgroundColor: 'rgba(0,0,0,0.16)', borderColor: 'rgba(255,255,255,0.12)', opacity: 0.7 },
+  tileDone: { backgroundColor: 'rgba(255,209,102,0.28)', borderColor: 'rgba(255,209,102,0.7)' },
+  tileCurrent: { backgroundColor: '#fff', borderColor: '#fff' },
+  tileEmoji: { fontSize: 14 },
+  tileNum: { color: '#fff', fontSize: 22, fontWeight: '900', lineHeight: 26 },
+  tileStars: { color: '#ffd166', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  lock: { fontSize: 20 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 24, backgroundColor: 'rgba(0,0,0,0.24)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
   chipOn: { backgroundColor: '#fff', borderColor: '#fff' },

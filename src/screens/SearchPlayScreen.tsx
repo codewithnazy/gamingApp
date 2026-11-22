@@ -13,6 +13,13 @@ import {
   starsFor,
   type Cell,
 } from '../search/engine';
+import {
+  MAX_LEVELS,
+  generateLevelPuzzle,
+  levelConfig,
+  recordLevelResult,
+  type LevelProgress,
+} from '../search/levels';
 import { FOUND_COLORS, paletteById, themeById } from '../search/themes';
 import type { Settings } from '../settings';
 import type { BestTimes } from '../storage';
@@ -25,6 +32,11 @@ interface Props {
   best: BestTimes;
   onNewBest: (key: string, seconds: number) => void;
   onBack: () => void;
+  /** Set when playing a campaign level; null/undefined for quick play. */
+  level?: number | null;
+  progress: LevelProgress;
+  onProgress: (next: LevelProgress) => void;
+  onNextLevel: (level: number) => void;
 }
 
 type FoundMap = Record<string, { color: string; cells: Cell[] }>;
@@ -56,16 +68,21 @@ const GridCell = memo(function GridCell(props: { letter: string; size: number; v
   );
 });
 
-export function SearchPlayScreen({ settings, best, onNewBest, onBack }: Props) {
-  const theme = themeById(settings.theme);
+export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, progress, onProgress, onNextLevel }: Props) {
+  const lc = level ? levelConfig(level) : null;
+  const theme = lc ? lc.theme : themeById(settings.theme);
   const palette = paletteById(settings.palette);
   const cfg = DIFFICULTIES[settings.difficulty];
-  const n = cfg.size;
+  const n = lc ? lc.size : cfg.size;
 
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 2147483647));
+  // A level is always the same puzzle; quick play makes a fresh one each time.
   const puzzle = useMemo(
-    () => generatePuzzle({ pool: theme.words, difficulty: settings.difficulty, seed }),
-    [theme, settings.difficulty, seed],
+    () =>
+      level
+        ? generateLevelPuzzle(level)
+        : generatePuzzle({ pool: theme.words, difficulty: settings.difficulty, seed }),
+    [level, theme, settings.difficulty, seed],
   );
   const words = useMemo(() => puzzle.placements.map((p) => p.word).sort(), [puzzle]);
 
@@ -74,7 +91,12 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack }: Props) {
   const [hintCell, setHintCell] = useState<Cell | null>(null);
   const [hints, setHints] = useState(0);
   const [elapsed, setElapsed] = useState(0);
-  const [won, setWon] = useState<{ time: number; stars: 1 | 2 | 3; record: boolean } | null>(null);
+  const [won, setWon] = useState<{
+    time: number;
+    stars: 1 | 2 | 3;
+    record: boolean;
+    unlocked?: number; // level that this win newly unlocked
+  } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [area, setArea] = useState({ w: 0, h: 0 });
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -193,12 +215,22 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack }: Props) {
   useEffect(() => {
     if (won || words.length === 0 || foundCount !== words.length) return;
     const time = elapsedRef.current;
-    const key = `${settings.theme}:${settings.difficulty}`;
-    const prev = best[key];
-    const record = settings.timer && (prev === undefined || time < prev);
-    if (record) onNewBest(key, time);
+    const stars = starsFor(hints);
+    let record: boolean;
+    let unlocked: number | undefined;
+    if (level) {
+      const res = recordLevelResult(progress, level, stars, settings.timer ? time : null);
+      onProgress(res.progress);
+      record = res.newBest;
+      unlocked = res.newlyUnlocked ? res.progress.unlocked : undefined;
+    } else {
+      const key = `${settings.theme}:${settings.difficulty}`;
+      const prev = best[key];
+      record = settings.timer && (prev === undefined || time < prev);
+      if (record) onNewBest(key, time);
+    }
     const t = setTimeout(() => feedback.success(), 250);
-    setWon({ time, stars: starsFor(hints), record });
+    setWon({ time, stars, record, unlocked });
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foundCount, words.length]);
@@ -212,7 +244,7 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack }: Props) {
   );
 
   const restart = () => {
-    setSeed(Math.floor(Math.random() * 2147483647));
+    if (!level) setSeed(Math.floor(Math.random() * 2147483647));
     setFound({});
     setSelection([]);
     live.current.selection = [];
@@ -244,6 +276,7 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack }: Props) {
     return map;
   }, [found, selection, hintCell]);
 
+  const bestTime = level ? progress.best[String(level)] : best[`${settings.theme}:${settings.difficulty}`];
   const gridPx = cell * n + (n - 1) * GAP;
   const onAreaLayout = (e: LayoutChangeEvent) =>
     setArea({ w: Math.round(e.nativeEvent.layout.width), h: Math.round(e.nativeEvent.layout.height) });
@@ -257,10 +290,10 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack }: Props) {
           </Pressable>
           <View style={styles.titleWrap}>
             <Text style={[glass.text, styles.title]}>
-              {theme.emoji} {theme.label}
+              {lc ? `Level ${lc.level}` : `${theme.emoji} ${theme.label}`}
             </Text>
             <Text style={[glass.text, styles.sub]}>
-              {cfg.label} · {n}×{n}
+              {lc ? `${theme.emoji} ${theme.label} · ${n}×${n}` : `${cfg.label} · ${n}×${n}`}
             </Text>
           </View>
           <View style={[styles.round, styles.timerBox]}>
@@ -329,15 +362,15 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack }: Props) {
             onPress={restart}
             style={({ pressed }) => [styles.action, pressed && { opacity: 0.8 }]}
           >
-            <Text style={styles.actionText}>🔄 New puzzle</Text>
+            <Text style={styles.actionText}>{level ? '↻ Restart' : '🔄 New puzzle'}</Text>
           </Pressable>
         </View>
 
         <Modal visible={!!won} transparent animationType="fade" onRequestClose={() => setWon(null)}>
           <View style={styles.backdrop}>
             <View style={styles.card}>
-              <Text style={styles.cardEmoji}>🎉</Text>
-              <Text style={styles.cardTitle}>All words found!</Text>
+              <Text style={styles.cardEmoji}>{level && level >= MAX_LEVELS ? '🏆' : '🎉'}</Text>
+              <Text style={styles.cardTitle}>{level ? `Level ${level} complete!` : 'All words found!'}</Text>
               <Text style={styles.stars}>
                 {'⭐'.repeat(won?.stars ?? 0)}
                 {'☆'.repeat(3 - (won?.stars ?? 0))}
@@ -345,17 +378,33 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack }: Props) {
               {settings.timer && won && (
                 <Text style={styles.cardSub}>
                   Time {formatTime(won.time)}
-                  {won.record ? '  ·  🏆 New best!' : best[`${settings.theme}:${settings.difficulty}`] !== undefined ? `  ·  Best ${formatTime(best[`${settings.theme}:${settings.difficulty}`])}` : ''}
+                  {won.record ? '  ·  🏆 New best!' : bestTime !== undefined ? `  ·  Best ${formatTime(bestTime)}` : ''}
                 </Text>
               )}
               <Text style={styles.cardSub}>
                 {hints === 0 ? 'No hints used — perfect!' : `${hints} hint${hints > 1 ? 's' : ''} used`}
               </Text>
-              <Pressable accessibilityRole="button" onPress={restart} style={styles.primary}>
-                <Text style={styles.primaryText}>Play again</Text>
-              </Pressable>
+              {won?.unlocked && <Text style={styles.unlock}>🔓 Level {won.unlocked} unlocked!</Text>}
+              {level && level >= MAX_LEVELS && (
+                <Text style={styles.unlock}>You&apos;ve finished every level — amazing!</Text>
+              )}
+
+              {level && level < MAX_LEVELS ? (
+                <Pressable accessibilityRole="button" onPress={() => onNextLevel(level + 1)} style={styles.primary}>
+                  <Text style={styles.primaryText}>Next level ▶</Text>
+                </Pressable>
+              ) : (
+                <Pressable accessibilityRole="button" onPress={restart} style={styles.primary}>
+                  <Text style={styles.primaryText}>{level ? 'Replay level' : 'Play again'}</Text>
+                </Pressable>
+              )}
+              {level && level < MAX_LEVELS && (
+                <Pressable accessibilityRole="button" onPress={restart} style={styles.secondary}>
+                  <Text style={styles.secondaryText}>Replay level</Text>
+                </Pressable>
+              )}
               <Pressable accessibilityRole="button" onPress={onBack} style={styles.secondary}>
-                <Text style={styles.secondaryText}>Change options</Text>
+                <Text style={styles.secondaryText}>{level ? 'Level select' : 'Change options'}</Text>
               </Pressable>
             </View>
           </View>
@@ -395,6 +444,7 @@ const styles = StyleSheet.create({
   cardTitle: { color: ink, fontSize: 26, fontWeight: '900' },
   stars: { fontSize: 32, marginVertical: 4 },
   cardSub: { color: '#5b5575', fontSize: 15, fontWeight: '600' },
+  unlock: { color: '#1c8a4e', fontSize: 15, fontWeight: '800', marginTop: 6, textAlign: 'center' },
   primary: { alignSelf: 'stretch', backgroundColor: '#ffb020', borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginTop: 14 },
   primaryText: { color: ink, fontSize: 17, fontWeight: '900' },
   secondary: { paddingVertical: 12 },

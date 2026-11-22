@@ -4,13 +4,22 @@ import { ActivityIndicator, BackHandler, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { setHapticsEnabled } from './src/haptics';
 import { DIFFICULTIES } from './src/search/engine';
+import { EMPTY_PROGRESS, type LevelProgress } from './src/search/levels';
 import { PALETTES, THEMES } from './src/search/themes';
 import { HeistScreen } from './src/screens/HeistScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { SearchPlayScreen } from './src/screens/SearchPlayScreen';
 import { SearchSetupScreen } from './src/screens/SearchSetupScreen';
 import { DEFAULT_SETTINGS, sanitizeSettings, type Settings } from './src/settings';
-import { loadBestTimes, loadRawSettings, saveBestTimes, saveSettings, type BestTimes } from './src/storage';
+import {
+  loadBestTimes,
+  loadLevelProgress,
+  loadRawSettings,
+  saveBestTimes,
+  saveLevelProgress,
+  saveSettings,
+  type BestTimes,
+} from './src/storage';
 
 type Screen = 'home' | 'search-setup' | 'search-play' | 'heist';
 
@@ -18,10 +27,17 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [settings, setSettings] = useState<Settings | null>(null);
   const [best, setBest] = useState<BestTimes>({});
+  const [progress, setProgress] = useState<LevelProgress>(EMPTY_PROGRESS);
+  /** Level being played, or null for quick play. */
+  const [playLevel, setPlayLevel] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
-      const [raw, savedBest] = await Promise.all([loadRawSettings(), loadBestTimes()]);
+      const [raw, savedBest, savedProgress] = await Promise.all([
+        loadRawSettings(),
+        loadBestTimes(),
+        loadLevelProgress(),
+      ]);
       setSettings(
         sanitizeSettings(raw, {
           themes: THEMES.map((t) => t.id),
@@ -30,6 +46,7 @@ export default function App() {
         }),
       );
       setBest(savedBest);
+      setProgress(savedProgress);
     })();
   }, []);
 
@@ -51,6 +68,11 @@ export default function App() {
       saveBestTimes(next);
       return next;
     });
+  }, []);
+
+  const updateProgress = useCallback((next: LevelProgress) => {
+    setProgress(next);
+    saveLevelProgress(next);
   }, []);
 
   // Android hardware back button walks back up the screen stack.
@@ -81,15 +103,28 @@ export default function App() {
         <SearchSetupScreen
           settings={settings}
           best={best}
+          progress={progress}
           onChange={update}
-          onStart={() => setScreen('search-play')}
+          onStartQuick={() => {
+            setPlayLevel(null);
+            setScreen('search-play');
+          }}
+          onStartLevel={(level) => {
+            setPlayLevel(level);
+            setScreen('search-play');
+          }}
           onBack={() => setScreen('home')}
         />
       )}
       {screen === 'search-play' && (
         <SearchPlayScreen
+          key={playLevel ?? 'quick'}
           settings={settings}
           best={best}
+          level={playLevel}
+          progress={progress}
+          onProgress={updateProgress}
+          onNextLevel={setPlayLevel}
           onNewBest={recordBest}
           onBack={() => setScreen('search-setup')}
         />

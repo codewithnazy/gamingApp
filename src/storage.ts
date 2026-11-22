@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { EMPTY_STATS, type GameState, type Stats } from './game.ts';
+import { sanitizeProgress, type LevelProgress } from './search/levels.ts';
 
 const GAME_KEY = 'wordheist:game:v1';
 const STATS_KEY = 'wordheist:stats:v1';
@@ -54,3 +55,13 @@ export async function loadBestTimes(): Promise<BestTimes> {
 }
 
 export const saveBestTimes = (best: BestTimes) => writeJson(BEST_KEY, best);
+
+// ---- Word Search levels ------------------------------------------------------
+
+const LEVELS_KEY = 'wordsearch:levels:v1';
+
+export async function loadLevelProgress(): Promise<LevelProgress> {
+  return sanitizeProgress(await readJson<unknown>(LEVELS_KEY));
+}
+
+export const saveLevelProgress = (progress: LevelProgress) => writeJson(LEVELS_KEY, progress);
