@@ -4,6 +4,7 @@
 // package is loaded inside try/catch and everything quietly turns into "no ads" if it is missing,
 // if consent does not allow ads, or if anything fails. The game never depends on an ad.
 import { Platform } from 'react-native';
+import { setAnalyticsConsent } from '../analytics';
 import { ADS_CONFIG } from './config';
 import { getAdsState, setAdsState, subscribeAds } from './store';
 import type { FullscreenOutcome } from './types';
@@ -134,7 +135,17 @@ let initPromise: Promise<void> | null = null;
 export function initAds(): Promise<void> {
   if (initPromise) return initPromise;
   initPromise = (async () => {
-    if (!ADS_CONFIG.enabled || !lib || Platform.OS === 'web') return;
+    // No ad SDK here (Expo Go): there is no consent form and no analytics backend either, so nothing
+    // can leave the device. Mark consent as decided so local debug logging works.
+    if (!lib) {
+      setAnalyticsConsent(true);
+      return;
+    }
+    // Ads switched off in config: we can't ask for consent without the form, so stay conservative.
+    if (!ADS_CONFIG.enabled || Platform.OS === 'web') {
+      setAnalyticsConsent(false);
+      return;
+    }
     try {
       // 1. Consent (UMP). The form only appears for users who need it.
       let canRequestAds = true;
@@ -150,6 +161,8 @@ export function initAds(): Promise<void> {
           canRequestAds = false;
         }
       }
+      // The same consent decision governs anonymous analytics: no consent -> nothing is sent.
+      setAnalyticsConsent(canRequestAds);
       if (!canRequestAds) return; // no consent -> no ads, and the game carries on
 
       // 2. Request configuration, then start the SDK.
@@ -166,6 +179,7 @@ export function initAds(): Promise<void> {
       loadInterstitial();
     } catch {
       setAdsState({ enabled: false });
+      setAnalyticsConsent(false);
     }
   })();
   return initPromise;

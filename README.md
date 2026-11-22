@@ -56,17 +56,24 @@ npm test           # game-logic tests (Node's built-in runner)
 npm run typecheck
 ```
 
-## 💰 Ads (Google AdMob)
+## 🪙 Coins, daily rewards, streaks and ads
 
-The game includes AdMob ads - an opt-in **📺 Free hint** rewarded video (it doesn't cost a star), a
-gentle between-levels ad (≤ 1 per 3 puzzles, ≥ 2 min apart, never before level 5), and banners on the
-menu screens only. Until you add your own ad unit IDs it shows **test ads only**, so it's safe to run
-and can't earn (or get you flagged) until you configure it.
+- **Coins:** +10 for a finished campaign level, +5 more for 3 stars (each paid once per level), +20 daily
+  login, +25 daily challenge, +30 for watching a reward video. A hint costs **50 coins**.
+- **Hint dialog:** *Need a hint?* - use 50 coins, watch an ad for a free hint, or cancel.
+- **Free Coins:** a clearly labelled button on Home and level select (watch an ad -> +30).
+- **Daily reward** (once a day), **Daily Challenge** (a new puzzle each day, the same for everyone) and a
+  🔥 **streak** (finish a puzzle each day) - all on the Home screen.
+- **Ads (Google AdMob)** - always test ads until you add your IDs: opt-in reward videos, a gentle
+  between-levels ad (about every 3-4 puzzles, 2 min apart, never in the first minute, never on
+  Restart/Replay) and banners on the menus only. **Expo Go shows no ads**; the browser preview
+  simulates them. Real ads need a native build: `npx eas-cli@latest build --platform android --profile preview`.
+- **Analytics** (typed, anonymous, consent-aware, with a "Usage stats" switch) and a prepared
+  **Remove Ads** purchase.
 
-- Setup guide, privacy/consent steps and Play Console checklist: [`docs/MONETIZATION.md`](docs/MONETIZATION.md)
-- All settings (on/off switch, ad unit IDs, frequency): `src/ads/config.ts`
-- **Expo Go shows no ads** (it has no AdMob native code); the browser preview *simulates* them. Real
-  ads need a native build: `npx eas-cli@latest build --platform android --profile preview`
+Docs: [`ARCHITECTURE`](docs/ARCHITECTURE.md) · [`MONETIZATION` (AdMob setup)](docs/MONETIZATION.md) ·
+[`ANALYTICS` (Firebase)](docs/ANALYTICS.md) · [`BILLING` (Remove Ads)](docs/BILLING.md) ·
+[`TESTING`](docs/TESTING.md) · [`PRIVACY_POLICY_TEMPLATE`](docs/PRIVACY_POLICY_TEMPLATE.md)
 
 ## Layout
 
@@ -79,7 +86,9 @@ and can't earn (or get you flagged) until you configure it.
 - `src/components/` — `GradientBackground`, and the Word Heist `Board`/`Keyboard`/modals
 - `src/game.ts` — pure Word Heist logic
 - `src/*.test.ts`, `src/search/*.test.ts` — tests (including word-list validation)
-- `src/ads/` — ads: config, frequency rules, AdMob layer (`adsImpl.ts`) and a web simulation (`adsImpl.web.ts`)
+- `src/economy/` — coin ledger, rewards, flows · `src/daily/` — daily reward, challenge, streak
+- `src/ads/` — ad service: config, policy, AdMob layer (`adsImpl.ts`) and a web simulation
+- `src/analytics/` · `src/billing/` — analytics engine and Remove-Ads architecture
 - `src/storage.ts`, `src/settings.ts` — AsyncStorage persistence
 
 ## Notes and next steps

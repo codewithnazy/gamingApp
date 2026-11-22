@@ -27,6 +27,14 @@ be personalised.
 - See Google's explanation of how it uses data from apps that use its services:
   <https://policies.google.com/technologies/partner-sites>
 
+## Analytics
+We use **[Firebase Analytics - delete this section if you do not enable it]** to understand how the
+game is used (for example which levels are completed). The events contain only game information
+(such as level number or coin amounts) and **no name, e-mail address or other personal details**.
+Firebase may use an app-instance identifier. In regions that require consent, analytics are only
+collected after you agree, and you can switch them off at any time in the app under
+*Options -> Usage stats*.
+
 We do not sell your personal information.
 
 ## Children

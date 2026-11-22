@@ -5,11 +5,11 @@ import { useAdsState } from './store';
 
 /** A banner ad for menu screens. Renders nothing when ads are off, unavailable or failed to load. */
 export function BannerSlot() {
-  const { enabled } = useAdsState();
+  const { enabled, adsRemoved } = useAdsState();
   const [failed, setFailed] = useState(false);
   const lib = getAdsLib();
   const unit = getUnit('banner');
-  if (!enabled || !lib || !unit || failed) return null;
+  if (!enabled || adsRemoved || !lib || !unit || failed) return null;
 
   const { BannerAd, BannerAdSize } = lib;
   return (

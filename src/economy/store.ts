@@ -44,6 +44,12 @@ export interface EconomyStore {
   flush(): Promise<void>;
   /** Run an arbitrary pure update on the state (for non-coin economy fields, e.g. streaks). */
   update(fn: (s: EconomyState) => EconomyState): void;
+  /**
+   * Run a pure state transition as ONE atomic commit (one persisted snapshot), so related changes
+   * - e.g. "grant the daily coins" + "remember today as claimed" - can never be saved half-done.
+   * `gain` (optional) is announced to onGain listeners only if the state actually changed.
+   */
+  transact<T>(fn: (s: EconomyState) => { state: EconomyState; result: T; gain?: GainEvent }): T;
 }
 
 export function createEconomyStore(storage: EconomyStorage, onError?: (e: unknown) => void): EconomyStore {
@@ -129,6 +135,15 @@ export function createEconomyStore(storage: EconomyStorage, onError?: (e: unknow
 
     update(fn) {
       commit(fn(state));
+    },
+
+    transact(fn) {
+      const out = fn(state);
+      if (out.state !== state) {
+        commit(out.state);
+        if (out.gain) gainListeners.forEach((l) => l(out.gain as GainEvent));
+      }
+      return out.result;
     },
   };
 }

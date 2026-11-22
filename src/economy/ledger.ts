@@ -11,6 +11,16 @@ export const MAX_COINS = 999_999_999;
 /** How many recent one-off transaction ids are remembered for duplicate protection. */
 export const RECENT_LIMIT = 100;
 
+/** Dates are local calendar days as "YYYY-MM-DD" (ISO dates sort correctly as plain strings). */
+export type DateKey = string;
+
+export interface StreakState {
+  current: number;
+  best: number;
+  /** The last calendar day with a finished puzzle. */
+  lastDate: DateKey | null;
+}
+
 export interface EconomyState {
   version: 1;
   coins: number;
@@ -18,9 +28,36 @@ export interface EconomyState {
   granted: Record<string, true>;
   /** Recent non-permanent transaction ids (ad rewards, hint purchases), newest last. */
   recent: string[];
+  /** Daily login reward: the last day it was claimed. */
+  daily: { lastClaim: DateKey | null };
+  /** Daily challenge: the last day it was completed. */
+  challenge: { lastCompleted: DateKey | null };
+  /** Daily play streak. */
+  streak: StreakState;
+  /** The "Remove Ads" entitlement (set by a future purchase/restore; see src/billing). */
+  adsRemoved: boolean;
 }
 
-export const EMPTY_ECONOMY: EconomyState = { version: 1, coins: 0, granted: {}, recent: [] };
+export const EMPTY_STREAK: StreakState = { current: 0, best: 0, lastDate: null };
+
+export const EMPTY_ECONOMY: EconomyState = {
+  version: 1,
+  coins: 0,
+  granted: {},
+  recent: [],
+  daily: { lastClaim: null },
+  challenge: { lastCompleted: null },
+  streak: EMPTY_STREAK,
+  adsRemoved: false,
+};
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+export const isDateKey = (v: unknown): v is DateKey => {
+  if (typeof v !== 'string' || !DATE_RE.test(v)) return false;
+  const [y, m, d] = v.split('-').map(Number);
+  const t = new Date(y, m - 1, d);
+  return t.getFullYear() === y && t.getMonth() === m - 1 && t.getDate() === d;
+};
 
 export type TxFailure = 'duplicate' | 'insufficient' | 'invalid';
 
@@ -88,5 +125,24 @@ export function sanitizeEconomy(raw: unknown): EconomyState {
     }
   }
   const recent = Array.isArray(r.recent) ? r.recent.filter(isId).slice(-RECENT_LIMIT) : [];
-  return { version: 1, coins, granted, recent };
+
+  const obj = (v: unknown) => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
+  const date = (v: unknown) => (isDateKey(v) ? v : null);
+  const count = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(100_000, Math.max(0, Math.floor(v))) : 0);
+  const st = obj(r.streak);
+  const current = count(st.current);
+  const streak: StreakState = { current, best: Math.max(current, count(st.best)), lastDate: date(st.lastDate) };
+  // A saved streak with no date can't be continued; treat it as no streak.
+  if (streak.lastDate === null) streak.current = 0;
+
+  return {
+    version: 1,
+    coins,
+    granted,
+    recent,
+    daily: { lastClaim: date(obj(r.daily).lastClaim) },
+    challenge: { lastCompleted: date(obj(r.challenge).lastCompleted) },
+    streak,
+    adsRemoved: r.adsRemoved === true,
+  };
 }

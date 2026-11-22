@@ -3,8 +3,8 @@ import { useAdsState } from './store';
 
 /** Web preview: a placeholder where the banner would appear. */
 export function BannerSlot() {
-  const { enabled } = useAdsState();
-  if (!enabled) return null;
+  const { enabled, adsRemoved } = useAdsState();
+  if (!enabled || adsRemoved) return null;
   return (
     <View style={styles.wrap} accessibilityLabel="Banner ad placeholder">
       <Text style={styles.text}>Banner ad · web preview</Text>

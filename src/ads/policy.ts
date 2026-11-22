@@ -51,7 +51,10 @@ export function canShowInterstitial(
   nextLevel: number,
   rules: InterstitialRules,
   sessionStartedAt: number,
+  /** The player owns "Remove Ads": no full-screen ads at all (see src/billing). */
+  adsRemoved = false,
 ): boolean {
+  if (adsRemoved) return false;
   if (now - sessionStartedAt < rules.appStartGraceMs) return false;
   if (nextLevel < rules.firstEligibleLevel) return false;
   if (gate.completedSinceAd < gate.threshold) return false;

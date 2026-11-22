@@ -13,6 +13,9 @@ import type { InterstitialStatus, RewardedStatus } from './types';
 
 export { initAds } from './adsImpl';
 export { useAdsState, getAdsState } from './store';
+
+/** Tell the ad layer whether the player owns "Remove Ads" (kept in sync with the economy state). */
+export const setAdsRemoved = (removed: boolean) => setAdsState({ adsRemoved: removed });
 export { BannerSlot } from './BannerSlot';
 export { AdOverlay } from './AdOverlay';
 export type { InterstitialStatus, RewardedStatus } from './types';
@@ -62,7 +65,8 @@ export function notePuzzleCompleted() {
 
 /** Is a between-puzzles ad currently allowed? (Exposed for tests/analytics; no side effects.) */
 export const interstitialAllowed = (nextLevel: number, now = Date.now()) =>
-  getAdsState().enabled && canShowInterstitial(gate, now, nextLevel, ADS_CONFIG.interstitial, getSessionStart());
+  getAdsState().enabled &&
+  canShowInterstitial(gate, now, nextLevel, ADS_CONFIG.interstitial, getSessionStart(), getAdsState().adsRemoved);
 
 /**
  * At a natural break (the player tapped Continue after finishing a puzzle): show a full-screen ad

@@ -13,6 +13,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { maybeShowInterstitial, notePuzzleCompleted, requestRewardedAd, useAdsState } from '../ads';
 import { rewardedFailureMessage } from '../ads/messages';
 import { track } from '../analytics';
+import { dailySpec, generateDailyPuzzle } from '../daily/challenge';
+import { finishDailyChallenge, notePuzzlePlayed } from '../daily/actions';
 import { CoinChip } from '../components/CoinChip';
 import { GradientBackground } from '../components/GradientBackground';
 import { HintDialog } from '../components/HintDialog';
@@ -52,6 +54,8 @@ interface Props {
   onBack: () => void;
   /** Set when playing a campaign level; null/undefined for quick play. */
   level?: number | null;
+  /** Set (to today's date key) when playing the Daily Challenge. Takes the place of level/quick. */
+  daily?: string | null;
   progress: LevelProgress;
   onProgress: (next: LevelProgress) => void;
   onNextLevel: (level: number) => void;
@@ -86,17 +90,18 @@ const GridCell = memo(function GridCell(props: { letter: string; size: number; v
   );
 });
 
-export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, progress, onProgress, onNextLevel }: Props) {
-  const lc = level ? levelConfig(level) : null;
+export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, daily, progress, onProgress, onNextLevel }: Props) {
+  const lc = level && !daily ? levelConfig(level) : null;
+  const dailySp = daily ? dailySpec(daily) : null;
   // Levels jumble every theme together; quick play uses the chosen theme (or Mixed).
   const theme = themeById(settings.theme);
   const palette = paletteById(settings.palette);
   const cfg = DIFFICULTIES[settings.difficulty];
-  const n = lc ? lc.size : cfg.size;
+  const n = lc ? lc.size : dailySp ? dailySp.size : cfg.size;
   const { height: windowHeight } = useWindowDimensions();
   const ads = useAdsState();
   const coins = useCoins();
-  const mode = level ? 'campaign' : 'quick';
+  const mode = daily ? 'daily' : level ? 'campaign' : 'quick';
   const [hintOpen, setHintOpen] = useState(false);
   const [hintMessage, setHintMessage] = useState<string | null>(null);
   const [continuing, setContinuing] = useState(false);
@@ -105,10 +110,12 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
   // A level is always the same puzzle; quick play makes a fresh one each time.
   const puzzle = useMemo(
     () =>
-      level
-        ? generateLevelPuzzle(level)
-        : generatePuzzle({ pool: theme.words, difficulty: settings.difficulty, seed }),
-    [level, theme, settings.difficulty, seed],
+      daily
+        ? generateDailyPuzzle(daily)
+        : level
+          ? generateLevelPuzzle(level)
+          : generatePuzzle({ pool: theme.words, difficulty: settings.difficulty, seed }),
+    [daily, level, theme, settings.difficulty, seed],
   );
   const words = useMemo(() => puzzle.placements.map((p) => p.word).sort(), [puzzle]);
 
@@ -243,7 +250,8 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
   // Analytics: a puzzle started (also when the level/seed changes).
   useEffect(() => {
     track('level_started', { level: level ?? 0, mode });
-  }, [level, seed, mode]);
+    if (daily) track('daily_challenge_started', { date: daily });
+  }, [level, seed, mode, daily]);
 
   // Win detection
   const foundCount = Object.keys(found).length;
@@ -266,12 +274,19 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
       onProgress(res.progress);
       record = res.newBest;
       unlocked = res.newlyUnlocked ? res.progress.unlocked : undefined;
+    } else if (daily) {
+      // Daily Challenge: pay once per day (atomic with the "done today" marker); replays pay nothing.
+      const paid = finishDailyChallenge(daily);
+      if (paid.rewarded) rewards.push({ label: 'Daily challenge', amount: paid.amount });
+      record = false;
+      track('daily_challenge_completed', { date: daily, seconds: time, stars });
     } else {
       const key = `${settings.theme}:${settings.difficulty}`;
       const prev = best[key];
       record = settings.timer && (prev === undefined || time < prev);
       if (record) onNewBest(key, time);
     }
+    notePuzzlePlayed(); // streak: any finished puzzle counts, once per calendar day
     const t = setTimeout(() => feedback.success(), 250);
     notePuzzleCompleted();
     track('level_completed', { level: level ?? 0, mode, stars, hints, seconds: time });
@@ -290,7 +305,7 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
 
   const restart = () => {
     if (!won) track('level_restarted', { level: level ?? 0, mode });
-    if (!level) setSeed(Math.floor(Math.random() * 2147483647));
+    if (!level && !daily) setSeed(Math.floor(Math.random() * 2147483647));
     setFound({});
     setSelection([]);
     live.current.selection = [];
@@ -390,7 +405,7 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
     return map;
   }, [found, selection, hintCell]);
 
-  const bestTime = level ? progress.best[String(level)] : best[`${settings.theme}:${settings.difficulty}`];
+  const bestTime = daily ? undefined : level ? progress.best[String(level)] : best[`${settings.theme}:${settings.difficulty}`];
   const gridPx = cell * n + (n - 1) * GAP;
   const onAreaLayout = (e: LayoutChangeEvent) =>
     setArea({ w: Math.round(e.nativeEvent.layout.width), h: Math.round(e.nativeEvent.layout.height) });
@@ -404,14 +419,16 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
           </Pressable>
           <View style={styles.titleWrap}>
             <Text style={[glass.text, styles.title]}>
-              {lc ? `Level ${lc.level}` : `${theme.emoji} ${theme.label}`}
+              {daily ? '📅 Daily Challenge' : lc ? `Level ${lc.level}` : `${theme.emoji} ${theme.label}`}
             </Text>
             <Text style={[glass.text, styles.sub]}>
-              {lc
-                ? lc.mystery
-                  ? `❓ Mystery · ${n}×${n}`
-                  : `${lc.icon} ${lc.tier} · ${n}×${n}`
-                : `${cfg.label} · ${n}×${n}`}
+              {daily
+                ? `${daily} · ${n}×${n}`
+                : lc
+                  ? lc.mystery
+                    ? `❓ Mystery · ${n}×${n}`
+                    : `${lc.icon} ${lc.tier} · ${n}×${n}`
+                  : `${cfg.label} · ${n}×${n}`}
             </Text>
           </View>
           <View style={[styles.round, styles.timerBox]}>
@@ -493,7 +510,7 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
             style={({ pressed }) => [styles.action, pressed && { opacity: 0.8 }]}
           >
             <Text style={styles.actionText} numberOfLines={1}>
-              {level ? '↻ Restart' : '🔄 New puzzle'}
+              {level || daily ? '↻ Restart' : '🔄 New puzzle'}
             </Text>
           </Pressable>
         </View>
@@ -514,7 +531,9 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
           <View style={styles.backdrop}>
             <View style={styles.card}>
               <Text style={styles.cardEmoji}>{level && level >= MAX_LEVELS ? '🏆' : '🎉'}</Text>
-              <Text style={styles.cardTitle}>{level ? `Level ${level} complete!` : 'All words found!'}</Text>
+              <Text style={styles.cardTitle}>
+                {daily ? 'Daily Challenge complete!' : level ? `Level ${level} complete!` : 'All words found!'}
+              </Text>
               <Text style={styles.stars}>
                 {'⭐'.repeat(won?.stars ?? 0)}
                 {'☆'.repeat(3 - (won?.stars ?? 0))}
@@ -534,7 +553,21 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
                 <Text style={styles.unlock}>You&apos;ve finished every level — amazing!</Text>
               )}
 
-              {level && level < MAX_LEVELS ? (
+              {daily ? (
+                <>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={continuing}
+                    onPress={() => continueAfterAd(9999, onBack)}
+                    style={[styles.primary, continuing && { opacity: 0.7 }]}
+                  >
+                    <Text style={styles.primaryText}>Back to menu</Text>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" disabled={continuing} onPress={restart} style={styles.secondary}>
+                    <Text style={styles.secondaryText}>Play again (no reward)</Text>
+                  </Pressable>
+                </>
+              ) : level && level < MAX_LEVELS ? (
                 <Pressable
                   accessibilityRole="button"
                   disabled={continuing}
@@ -558,9 +591,11 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
                   <Text style={styles.secondaryText}>Replay level</Text>
                 </Pressable>
               )}
-              <Pressable accessibilityRole="button" onPress={onBack} style={styles.secondary}>
-                <Text style={styles.secondaryText}>{level ? 'Level select' : 'Change options'}</Text>
-              </Pressable>
+              {!daily && (
+                <Pressable accessibilityRole="button" onPress={onBack} style={styles.secondary}>
+                  <Text style={styles.secondaryText}>{level ? 'Level select' : 'Change options'}</Text>
+                </Pressable>
+              )}
             </View>
           </View>
         </Modal>

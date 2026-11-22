@@ -5,7 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BannerSlot } from '../ads';
 import { CoinChip } from '../components/CoinChip';
 import { FreeCoinsDialog } from '../components/FreeCoinsDialog';
-import { REWARDS } from '../economy';
+import { RemoveAdsDialog } from '../components/RemoveAdsDialog';
+import { REWARDS, useEconomy } from '../economy';
 import { GradientBackground } from '../components/GradientBackground';
 import { glass, ink } from '../glass';
 import * as feedback from '../haptics';
@@ -40,6 +41,8 @@ const TILE_GAP = 10;
 export function SearchSetupScreen({ settings, best, progress, onChange, onStartQuick, onStartLevel, onBack }: Props) {
   const { width } = useWindowDimensions();
   const [freeOpen, setFreeOpen] = useState(false);
+  const [removeAdsOpen, setRemoveAdsOpen] = useState(false);
+  const adsRemoved = useEconomy().adsRemoved;
   const palette = paletteById(settings.palette);
   const bestKey = `${settings.theme}:${settings.difficulty}`;
   const isLevels = settings.mode === 'levels';
@@ -252,6 +255,26 @@ export function SearchSetupScreen({ settings, best, progress, onChange, onStartQ
               value={settings.haptics}
               onChange={(v) => onChange({ haptics: v })}
             />
+            <View style={styles.divider} />
+            <OptionRow
+              label="📊  Usage stats"
+              sub="Share anonymous stats to help improve the game"
+              value={settings.analytics}
+              onChange={(v) => onChange({ analytics: v })}
+            />
+            <View style={styles.divider} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={adsRemoved ? 'Ads removed' : 'Remove ads'}
+              onPress={() => setRemoveAdsOpen(true)}
+              style={({ pressed }) => [styles.optionRow, pressed && { opacity: 0.8 }]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[glass.text, styles.optionLabel]}>{adsRemoved ? '✅  Ads removed' : '🚫  Remove Ads'}</Text>
+                <Text style={styles.optionSub}>{adsRemoved ? 'Thank you for supporting the game' : 'One-time purchase · coming soon'}</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
           </View>
 
           <Text style={[glass.text, styles.section]}>Background</Text>
@@ -301,6 +324,7 @@ export function SearchSetupScreen({ settings, best, progress, onChange, onStartQ
         </View>
         <BannerSlot />
         <FreeCoinsDialog visible={freeOpen} onClose={() => setFreeOpen(false)} />
+        <RemoveAdsDialog visible={removeAdsOpen} onClose={() => setRemoveAdsOpen(false)} />
       </SafeAreaView>
     </GradientBackground>
   );
@@ -433,6 +457,7 @@ const styles = StyleSheet.create({
   hint: { marginTop: 10, fontSize: 13, opacity: 0.95 },
   options: { paddingHorizontal: 16 },
   optionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  chevron: { color: '#fff', fontSize: 26, fontWeight: '700', opacity: 0.8 },
   optionLabel: { fontSize: 16, fontWeight: '700' },
   optionSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 2 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.35)' },

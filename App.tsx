@@ -2,9 +2,11 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, BackHandler, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AdOverlay, initAds } from './src/ads';
-import { track } from './src/analytics';
+import { AdOverlay, initAds, setAdsRemoved } from './src/ads';
+import { setAnalyticsOptIn, track } from './src/analytics';
 import { CoinFloater } from './src/components/CoinFloater';
+import { StreakCelebration } from './src/components/StreakCelebration';
+import { dateKey } from './src/daily/dates';
 import { economy } from './src/economy';
 import { setHapticsEnabled } from './src/haptics';
 import { DIFFICULTIES } from './src/search/engine';
@@ -25,7 +27,7 @@ import {
   type BestTimes,
 } from './src/storage';
 
-type Screen = 'home' | 'search-setup' | 'search-play' | 'heist';
+type Screen = 'home' | 'search-setup' | 'search-play' | 'daily' | 'heist';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
@@ -34,6 +36,8 @@ export default function App() {
   const [progress, setProgress] = useState<LevelProgress>(EMPTY_PROGRESS);
   /** Level being played, or null for quick play. */
   const [playLevel, setPlayLevel] = useState<number | null>(null);
+  /** The Daily Challenge date being played (YYYY-MM-DD). */
+  const [dailyDate, setDailyDate] = useState<string>(() => dateKey());
 
   useEffect(() => {
     (async () => {
@@ -72,8 +76,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (settings) setHapticsEnabled(settings.haptics);
+    if (!settings) return;
+    setHapticsEnabled(settings.haptics);
+    setAnalyticsOptIn(settings.analytics); // the player's own "usage stats" switch
   }, [settings]);
+
+  // Keep the ad layer in step with the "Remove Ads" entitlement (banners & between-level ads off).
+  useEffect(() => {
+    setAdsRemoved(economy.getState().adsRemoved);
+    return economy.subscribe(() => setAdsRemoved(economy.getState().adsRemoved));
+  }, []);
 
   const update = useCallback((patch: Partial<Settings>) => {
     setSettings((prev) => {
@@ -118,7 +130,15 @@ export default function App() {
     <SafeAreaProvider>
       <StatusBar style="light" />
       {screen === 'home' && (
-        <HomeScreen settings={settings} onSearch={() => setScreen('search-setup')} onHeist={() => setScreen('heist')} />
+        <HomeScreen
+          settings={settings}
+          onSearch={() => setScreen('search-setup')}
+          onDaily={() => {
+            setDailyDate(dateKey()); // today, as of the moment the player taps
+            setScreen('daily');
+          }}
+          onHeist={() => setScreen('heist')}
+        />
       )}
       {screen === 'search-setup' && (
         <SearchSetupScreen
@@ -150,8 +170,23 @@ export default function App() {
           onBack={() => setScreen('search-setup')}
         />
       )}
+      {screen === 'daily' && (
+        <SearchPlayScreen
+          key={`daily:${dailyDate}`}
+          settings={settings}
+          best={best}
+          level={null}
+          daily={dailyDate}
+          progress={progress}
+          onProgress={updateProgress}
+          onNextLevel={() => {}}
+          onNewBest={recordBest}
+          onBack={() => setScreen('home')}
+        />
+      )}
       {screen === 'heist' && <HeistScreen onBack={() => setScreen('home')} />}
       <CoinFloater />
+      <StreakCelebration />
       <AdOverlay />
     </SafeAreaProvider>
   );

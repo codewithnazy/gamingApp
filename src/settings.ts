@@ -11,6 +11,8 @@ export interface Settings {
   /** Show a running timer (and record best times). */
   timer: boolean;
   haptics: boolean;
+  /** Share anonymous usage statistics (never any personal data). */
+  analytics: boolean;
   palette: PaletteId;
 }
 
@@ -20,6 +22,7 @@ export const DEFAULT_SETTINGS: Settings = {
   difficulty: 'easy',
   timer: true,
   haptics: true,
+  analytics: true,
   palette: 'sunset',
 };
 
@@ -39,5 +42,6 @@ export function sanitizeSettings(raw: unknown, valid: {
     palette: pick(r.palette, valid.palettes, DEFAULT_SETTINGS.palette),
     timer: typeof r.timer === 'boolean' ? r.timer : DEFAULT_SETTINGS.timer,
     haptics: typeof r.haptics === 'boolean' ? r.haptics : DEFAULT_SETTINGS.haptics,
+    analytics: typeof r.analytics === 'boolean' ? r.analytics : DEFAULT_SETTINGS.analytics,
   };
 }

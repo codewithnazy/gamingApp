@@ -7,11 +7,13 @@ export interface AdsState {
   rewardedReady: boolean;
   /** An ad request is in flight (loading or showing). New requests are refused while true. */
   busy: boolean;
+  /** The player owns "Remove Ads": no banners and no between-level ads (rewarded ads stay). */
+  adsRemoved: boolean;
   /** Web preview only: which simulated ad is "playing". */
   simulating: 'rewarded' | 'interstitial' | null;
 }
 
-let state: AdsState = { enabled: false, rewardedReady: false, busy: false, simulating: null };
+let state: AdsState = { enabled: false, rewardedReady: false, busy: false, adsRemoved: false, simulating: null };
 const listeners = new Set<() => void>();
 
 export const getAdsState = () => state;
