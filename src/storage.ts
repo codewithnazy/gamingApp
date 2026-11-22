@@ -36,3 +36,21 @@ export async function loadStats(): Promise<Stats> {
 }
 
 export const saveStats = (stats: Stats) => writeJson(STATS_KEY, stats);
+
+// ---- Word Search -----------------------------------------------------------
+
+const SETTINGS_KEY = 'arcade:settings:v1';
+const BEST_KEY = 'wordsearch:best:v1';
+
+/** Returns raw saved settings (validate with sanitizeSettings) or null. */
+export const loadRawSettings = () => readJson<unknown>(SETTINGS_KEY);
+export const saveSettings = (settings: unknown) => writeJson(SETTINGS_KEY, settings);
+
+/** Best (lowest) completion time in seconds, keyed by "theme:difficulty". */
+export type BestTimes = Record<string, number>;
+
+export async function loadBestTimes(): Promise<BestTimes> {
+  return (await readJson<BestTimes>(BEST_KEY)) ?? {};
+}
+
+export const saveBestTimes = (best: BestTimes) => writeJson(BEST_KEY, best);

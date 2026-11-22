@@ -1,24 +1,29 @@
-# Word Heist 🕶️
+# Word Arcade 🎯
 
-A daily word-puzzle mobile game (React Native + Expo, TypeScript).
+A colourful word-game collection for mobile (React Native + Expo, TypeScript).
 
-Everyone gets the same 5-letter word each day and has 6 guesses. The twist:
-each day a rival "mark" holds a letter of the answer. **Once per day you can
-steal one letter** from their board — it's revealed in position and turns the
-keyboard key green — but it costs you **150 points**.
+## Games
 
-## Scoring
+### 🔎 Word Search
+Drag across the letters to find every hidden word. Words can run in any direction
+you allow, forwards or backwards.
 
-| Win in | Points |
+**Options** (saved between sessions):
+
+| Option | Choices |
 |---|---|
-| 1 guess | 600 |
-| 2 | 500 |
-| 3 | 400 |
-| 4 | 300 |
-| 5 | 200 |
-| 6 | 100 |
+| Theme | Animals, Food, Space, Ocean, Sports, Countries, Gaming |
+| Difficulty | **Easy** 8×8, 6 words, across/down · **Medium** 10×10, 8 words, + diagonals · **Hard** 12×12, 10 words, all 8 directions |
+| Timer | On (records your best time per theme + difficulty) or off for a relaxed game |
+| Haptics | On / off |
+| Background | 6 gradient palettes: Sunset, Candy, Aurora, Ocean, Forest, Galaxy |
 
-Each steal subtracts 150 (minimum 50 for a win). A loss scores 0.
+Each puzzle is freshly generated. 💡 Hints ring the first letter of a hidden word; finish
+with no hints for ⭐⭐⭐.
+
+### 🕶️ Word Heist
+A daily 5-letter word puzzle (6 guesses). Once per day you can steal one letter from the
+rival's board for −150 points.
 
 ## Run it
 
@@ -31,21 +36,21 @@ npm run typecheck
 
 ## Layout
 
-- `App.tsx` — main screen, game flow, persistence wiring
-- `src/game.ts` — pure game logic (evaluation, daily word, steals, scoring, streaks, sharing)
-- `src/game.test.ts` — tests, including word-list validation
-- `src/words.ts` — answer list and extra accepted guesses
-- `src/storage.ts` — AsyncStorage save/load (today's game + stats)
-- `src/components/` — `Board`, `Keyboard`, `ResultModal`
+- `App.tsx` — screen navigation, settings and best-times state, Android back button
+- `src/search/engine.ts` — pure word-search logic: puzzle generation, drag snapping, matching
+- `src/search/themes.ts` — word lists, background palettes, found-word colours
+- `src/screens/` — `HomeScreen`, `SearchSetupScreen`, `SearchPlayScreen`, `HeistScreen`
+- `src/components/` — `GradientBackground`, and the Word Heist `Board`/`Keyboard`/modals
+- `src/game.ts` — pure Word Heist logic
+- `src/*.test.ts`, `src/search/engine.test.ts` — tests (including word-list validation)
+- `src/storage.ts`, `src/settings.ts` — AsyncStorage persistence
 
 ## Notes and next steps
 
-- The daily word is derived from the **device's local date**, so the word rolls
-  over at each player's local midnight. This is offline-only for now: there is
-  no backend, so the rival is flavor text, not a real player.
-- The built-in word list is small (~700 answers, ~375 extra guesses). Expand
-  `src/words.ts` before shipping; the tests validate any additions.
-- Ideas: real asynchronous rivals (a backend with daily boards and a
-  leaderboard), push-notification reminders, hard mode, colorblind palette.
+- Word lists are small (about 30 words per theme). Add more to `src/search/themes.ts`;
+  the tests validate every list against all three difficulties.
+- Ideas: a daily seeded puzzle, custom word lists, more themes, sound effects.
+- Word Heist's daily word uses the device's local date, and its rival is flavour text
+  (no backend).
 - `bundleIdentifier` / `package` in `app.json` are placeholders
   (`com.example.wordheist`) — change them before building for the stores.
