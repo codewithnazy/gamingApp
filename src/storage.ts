@@ -65,3 +65,14 @@ export async function loadLevelProgress(): Promise<LevelProgress> {
 }
 
 export const saveLevelProgress = (progress: LevelProgress) => writeJson(LEVELS_KEY, progress);
+
+// ---- Economy (coins, rewards ledger) ---------------------------------------------------------
+
+const ECONOMY_KEY = 'arcade:economy:v1';
+
+export const loadEconomyRaw = () => readJson<unknown>(ECONOMY_KEY);
+
+/** Unlike the fire-and-forget savers above, this reports failure so the write queue can log it. */
+export async function saveEconomyState(state: unknown): Promise<void> {
+  await AsyncStorage.setItem(ECONOMY_KEY, JSON.stringify(state));
+}

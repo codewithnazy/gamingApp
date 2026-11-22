@@ -3,6 +3,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, BackHandler, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AdOverlay, initAds } from './src/ads';
+import { track } from './src/analytics';
+import { CoinFloater } from './src/components/CoinFloater';
+import { economy } from './src/economy';
 import { setHapticsEnabled } from './src/haptics';
 import { DIFFICULTIES } from './src/search/engine';
 import { EMPTY_PROGRESS, type LevelProgress } from './src/search/levels';
@@ -38,6 +41,7 @@ export default function App() {
         loadRawSettings(),
         loadBestTimes(),
         loadLevelProgress(),
+        economy.init(), // coins & reward ledger (repairs corrupt data, never throws)
       ]);
       setSettings(
         sanitizeSettings(raw, {
@@ -54,6 +58,17 @@ export default function App() {
   // Start ads once (consent form first where required). Failure just means no ads.
   useEffect(() => {
     initAds();
+    track('app_opened', {});
+  }, []);
+
+  // One place bridges coin transactions to analytics, so no call site can forget.
+  useEffect(() => {
+    const offGain = economy.onGain((e) => track('coins_earned', { amount: e.amount, source: e.reason }));
+    const offSpend = economy.onSpend((e) => track('coins_spent', { amount: e.amount, reason: e.reason }));
+    return () => {
+      offGain();
+      offSpend();
+    };
   }, []);
 
   useEffect(() => {
@@ -136,6 +151,7 @@ export default function App() {
         />
       )}
       {screen === 'heist' && <HeistScreen onBack={() => setScreen('home')} />}
+      <CoinFloater />
       <AdOverlay />
     </SafeAreaProvider>
   );

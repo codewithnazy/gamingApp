@@ -5,7 +5,8 @@
 // if consent does not allow ads, or if anything fails. The game never depends on an ad.
 import { Platform } from 'react-native';
 import { ADS_CONFIG } from './config';
-import { setAdsState } from './store';
+import { getAdsState, setAdsState, subscribeAds } from './store';
+import type { FullscreenOutcome } from './types';
 import { configuredUnits, resolveUnit, type ResolvedUnit } from './units';
 
 type AdsLib = typeof import('react-native-google-mobile-ads');
@@ -41,30 +42,50 @@ let interstitial: InterstitialAdInstance | null = null;
 let interstitialLoaded = false;
 let rewardedFails = 0;
 let interstitialFails = 0;
+let rewardedLoading = false;
+/** Notified with true when a rewarded ad loads, false when loading fails (offline, no fill, ...). */
+const rewardedLoadListeners = new Set<(ok: boolean) => void>();
+let rewardedRetry: ReturnType<typeof setTimeout> | null = null;
+let interstitialRetry: ReturnType<typeof setTimeout> | null = null;
+
+/** When this app session began (for the interstitial start-up grace period). */
+const SESSION_STARTED_AT = Date.now();
+export const getSessionStart = () => SESSION_STARTED_AT;
 
 // Retry failed loads with a growing delay (15s, 30s, ... capped at 5 min) so a dead network or an
 // empty ad inventory never spams requests.
 const retryDelay = (fails: number) => Math.min(300_000, 15_000 * 2 ** Math.max(0, fails - 1));
 
 function loadRewarded() {
-  if (!lib) return;
+  if (!lib || rewardedLoading) return;
   const unit = getUnit('rewarded');
   if (!unit) return;
+  if (rewardedRetry) {
+    clearTimeout(rewardedRetry);
+    rewardedRetry = null;
+  }
   const ad = lib.RewardedAd.createForAdRequest(unit.id);
   rewarded = ad;
   rewardedLoaded = false;
+  rewardedLoading = true;
   setAdsState({ rewardedReady: false });
 
   ad.addAdEventListener(lib.RewardedAdEventType.LOADED, () => {
     rewardedFails = 0;
+    rewardedLoading = false;
     rewardedLoaded = true;
     setAdsState({ rewardedReady: true });
+    rewardedLoadListeners.forEach((l) => l(true));
   });
   ad.addAdEventListener(lib.AdEventType.ERROR, () => {
+    // Fired for load failures (offline, no fill, ...). Show-time errors are handled in showFullscreen.
+    if (!rewardedLoading) return;
+    rewardedLoading = false;
     rewardedLoaded = false;
     setAdsState({ rewardedReady: false });
     rewardedFails++;
-    setTimeout(loadRewarded, retryDelay(rewardedFails));
+    rewardedRetry = setTimeout(loadRewarded, retryDelay(rewardedFails));
+    rewardedLoadListeners.forEach((l) => l(false));
   });
   ad.addAdEventListener(lib.AdEventType.CLOSED, () => {
     rewardedLoaded = false;
@@ -78,6 +99,10 @@ function loadInterstitial() {
   if (!lib) return;
   const unit = getUnit('interstitial');
   if (!unit) return;
+  if (interstitialRetry) {
+    clearTimeout(interstitialRetry);
+    interstitialRetry = null;
+  }
   const ad = lib.InterstitialAd.createForAdRequest(unit.id);
   interstitial = ad;
   interstitialLoaded = false;
@@ -89,7 +114,7 @@ function loadInterstitial() {
   ad.addAdEventListener(lib.AdEventType.ERROR, () => {
     interstitialLoaded = false;
     interstitialFails++;
-    setTimeout(loadInterstitial, retryDelay(interstitialFails));
+    interstitialRetry = setTimeout(loadInterstitial, retryDelay(interstitialFails));
   });
   ad.addAdEventListener(lib.AdEventType.CLOSED, () => {
     interstitialLoaded = false;
@@ -146,42 +171,75 @@ export function initAds(): Promise<void> {
   return initPromise;
 }
 
-/** Wait for a loaded full-screen ad to be shown and closed. Resolves with whether it appeared. */
-function showFullscreen(ad: Fullscreen, onShown?: () => void): Promise<{ shown: boolean; earned: boolean }> {
-  const l = lib;
-  if (!l) return Promise.resolve({ shown: false, earned: false });
+/**
+ * Wait (up to `timeoutMs`) for a rewarded ad to be ready.
+ *  - 'ready':       an ad is loaded
+ *  - 'unavailable': the SDK reported that loading failed (offline / no fill) - no point waiting
+ *  - 'timeout':     still loading when the time ran out
+ */
+export function waitForRewarded(timeoutMs: number): Promise<'ready' | 'unavailable' | 'timeout'> {
+  if (rewardedLoaded) return Promise.resolve('ready');
+  if (!getAdsState().enabled || !lib) return Promise.resolve('unavailable');
+  if (!rewardedLoading) loadRewarded(); // not loading (e.g. waiting on retry back-off): try now
   return new Promise((resolve) => {
-    let earned = false;
-    let shown = false;
-    const offs: (() => void)[] = [];
-    const done = () => {
-      offs.forEach((off) => off());
-      resolve({ shown, earned });
+    const finish = (r: 'ready' | 'unavailable' | 'timeout') => {
+      clearTimeout(timer);
+      rewardedLoadListeners.delete(onResult);
+      resolve(r);
     };
-    offs.push(
-      (ad as RewardedAdInstance).addAdEventListener(l.AdEventType.OPENED, () => {
-        shown = true;
-        onShown?.();
-      }),
-      (ad as RewardedAdInstance).addAdEventListener(l.AdEventType.CLOSED, done),
-      (ad as RewardedAdInstance).addAdEventListener(l.RewardedAdEventType.EARNED_REWARD, () => {
-        earned = true;
-      }),
-    );
-    ad.show().catch(done);
+    const onResult = (ok: boolean) => finish(ok ? 'ready' : 'unavailable');
+    const timer = setTimeout(() => finish('timeout'), timeoutMs);
+    rewardedLoadListeners.add(onResult);
   });
 }
 
-/** Show the rewarded video. Resolves true only if the player watched enough to earn the reward. */
-export async function showRewardedAd(): Promise<boolean> {
-  if (!rewarded || !rewardedLoaded) return false;
-  const { earned } = await showFullscreen(rewarded);
-  return earned;
+/**
+ * Show a loaded full-screen ad and wait for the result.
+ *  - never opened within `openTimeoutMs`  -> 'timeout'
+ *  - SDK error / show() rejected          -> 'failed'
+ *  - opened and closed                    -> 'earned' if the reward callback fired, else 'closed'
+ */
+function showFullscreen(ad: Fullscreen, openTimeoutMs: number): Promise<FullscreenOutcome> {
+  const l = lib;
+  if (!l) return Promise.resolve('failed');
+  const a = ad as RewardedAdInstance; // same listener API on both ad types
+  return new Promise((resolve) => {
+    let earned = false;
+    let opened = false;
+    let settled = false;
+    const offs: (() => void)[] = [];
+    const settle = (outcome: FullscreenOutcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      offs.forEach((off) => off());
+      resolve(outcome);
+    };
+    const timer = setTimeout(() => settle(opened ? 'closed' : 'timeout'), openTimeoutMs);
+
+    offs.push(
+      a.addAdEventListener(l.AdEventType.OPENED, () => {
+        opened = true;
+        clearTimeout(timer); // once it is open the player is watching; no more timeout
+      }),
+      a.addAdEventListener(l.RewardedAdEventType.EARNED_REWARD, () => {
+        earned = true; // the ONLY place a reward is ever recorded
+      }),
+      a.addAdEventListener(l.AdEventType.CLOSED, () => settle(earned ? 'earned' : 'closed')),
+      a.addAdEventListener(l.AdEventType.ERROR, () => settle('failed')),
+    );
+    ad.show().catch(() => settle('failed'));
+  });
 }
 
-/** Show an interstitial if one is ready. Resolves true if it was actually shown. */
-export async function showInterstitialAd(): Promise<boolean> {
-  if (!interstitial || !interstitialLoaded) return false;
-  const { shown } = await showFullscreen(interstitial);
-  return shown;
+/** Show the loaded rewarded ad. Callers must go through requestRewardedAd (single-flight). */
+export async function showRewardedAd(openTimeoutMs: number): Promise<FullscreenOutcome | 'unavailable'> {
+  if (!rewarded || !rewardedLoaded) return 'unavailable';
+  return showFullscreen(rewarded, openTimeoutMs);
+}
+
+/** Show the loaded interstitial. Callers must go through maybeShowInterstitial (single-flight). */
+export async function showInterstitialAd(openTimeoutMs: number): Promise<FullscreenOutcome | 'unavailable'> {
+  if (!interstitial || !interstitialLoaded) return 'unavailable';
+  return showFullscreen(interstitial, openTimeoutMs);
 }

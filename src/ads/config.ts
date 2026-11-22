@@ -46,14 +46,34 @@ export const ADS_CONFIG = {
    */
   tagForChildDirectedTreatment: false,
 
-  /** How often the between-levels full-screen ad may appear (kept gentle on purpose). */
+  /**
+   * How often the between-levels full-screen ad may appear. Tune it here - nowhere else.
+   * An ad is only ever considered AFTER a puzzle is finished and the player taps Continue; never
+   * during play, on Restart/Replay, or at app start.
+   */
   interstitial: {
-    /** Show at most one ad per this many completed puzzles... */
-    everyNLevels: 3,
-    /** ...and never more often than this many milliseconds apart... */
+    /**
+     * Eligible after this many finished puzzles since the last ad. A number between minLevels and
+     * maxLevels is picked at random each cycle, so it is "about every 3-4 levels", not a metronome.
+     */
+    minLevels: 3,
+    maxLevels: 4,
+    /** Never more often than this many milliseconds apart. */
     minGapMs: 120_000,
-    /** ...and never before the player has reached this level (new players get a clean start). */
+    /** Never before the player has reached this level (new players get a clean start). */
     firstEligibleLevel: 5,
+    /** Never in the first N milliseconds after the app starts. */
+    appStartGraceMs: 60_000,
+    /** Give up if a loaded interstitial has not opened within this long (milliseconds). */
+    showTimeoutMs: 8_000,
+  },
+
+  /** Rewarded-ad timing. The player is never left waiting indefinitely. */
+  rewarded: {
+    /** If no rewarded ad is ready, wait at most this long for one to load (milliseconds). */
+    loadTimeoutMs: 8_000,
+    /** Give up if a loaded rewarded ad has not opened within this long (milliseconds). */
+    showTimeoutMs: 10_000,
   },
 };
 

@@ -10,8 +10,15 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { maybeShowInterstitial, notePuzzleCompleted, showRewardedAd, useAdsState } from '../ads';
+import { maybeShowInterstitial, notePuzzleCompleted, requestRewardedAd, useAdsState } from '../ads';
+import { rewardedFailureMessage } from '../ads/messages';
+import { track } from '../analytics';
+import { CoinChip } from '../components/CoinChip';
 import { GradientBackground } from '../components/GradientBackground';
+import { HintDialog } from '../components/HintDialog';
+import { RewardSummary, type RewardLine } from '../components/RewardSummary';
+import { economy, HINT_RULES, levelRewardGrants, useCoins } from '../economy';
+import { buyHintWithCoins, getHintFromAd } from '../economy/flows';
 import { glass, ink } from '../glass';
 import * as feedback from '../haptics';
 import {
@@ -88,8 +95,11 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
   const n = lc ? lc.size : cfg.size;
   const { height: windowHeight } = useWindowDimensions();
   const ads = useAdsState();
-  const [adBusy, setAdBusy] = useState(false);
-  const freeHintAvailable = ads.enabled && ads.rewardedReady;
+  const coins = useCoins();
+  const mode = level ? 'campaign' : 'quick';
+  const [hintOpen, setHintOpen] = useState(false);
+  const [hintMessage, setHintMessage] = useState<string | null>(null);
+  const [continuing, setContinuing] = useState(false);
 
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 2147483647));
   // A level is always the same puzzle; quick play makes a fresh one each time.
@@ -112,6 +122,7 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
     stars: 1 | 2 | 3;
     record: boolean;
     unlocked?: number; // level that this win newly unlocked
+    rewards: RewardLine[]; // coins actually paid for this win (empty on replays)
   } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [area, setArea] = useState({ w: 0, h: 0 });
@@ -223,10 +234,16 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
 
   // Timer
   useEffect(() => {
-    if (!settings.timer || won) return;
+    // Time spent in the hint dialog or watching an ad is not the player's solving time.
+    if (!settings.timer || won || hintOpen || ads.busy) return;
     const id = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(id);
-  }, [settings.timer, won, seed]);
+  }, [settings.timer, won, seed, hintOpen, ads.busy]);
+
+  // Analytics: a puzzle started (also when the level/seed changes).
+  useEffect(() => {
+    track('level_started', { level: level ?? 0, mode });
+  }, [level, seed, mode]);
 
   // Win detection
   const foundCount = Object.keys(found).length;
@@ -236,7 +253,15 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
     const stars = starsFor(hints);
     let record: boolean;
     let unlocked: number | undefined;
+    const rewards: RewardLine[] = [];
     if (level) {
+      // 1) Coins first. Each grant has a permanent id, so a level can never pay out twice - and if
+      //    the app dies right after this, the reward is already saved and level progress can be redone.
+      for (const g of levelRewardGrants(level, stars)) {
+        const paid = economy.grant({ id: g.id, amount: g.amount, kind: 'once' }, 'level');
+        if (paid.applied) rewards.push({ label: g.label, amount: g.amount });
+      }
+      // 2) Then the level progress (stars, unlock, best time).
       const res = recordLevelResult(progress, level, stars, settings.timer ? time : null);
       onProgress(res.progress);
       record = res.newBest;
@@ -249,7 +274,8 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
     }
     const t = setTimeout(() => feedback.success(), 250);
     notePuzzleCompleted();
-    setWon({ time, stars, record, unlocked });
+    track('level_completed', { level: level ?? 0, mode, stars, hints, seconds: time });
+    setWon({ time, stars, record, unlocked, rewards });
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foundCount, words.length]);
@@ -263,6 +289,7 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
   );
 
   const restart = () => {
+    if (!won) track('level_restarted', { level: level ?? 0, mode });
     if (!level) setSeed(Math.floor(Math.random() * 2147483647));
     setFound({});
     setSelection([]);
@@ -274,11 +301,21 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
     setToast(null);
   };
 
-  const giveHint = (free: boolean) => {
-    const left = puzzle.placements.filter((p) => !found[p.word]);
-    if (left.length === 0 || won) return;
+  // ---- hints -------------------------------------------------------------------------------------
+  // These read `live.current` (refreshed every render) instead of closed-over state, so they are
+  // never stale - important after an ad finishes, when the puzzle may have changed underneath.
+  const canApplyHint = () => {
+    const L = live.current;
+    return !L.won && L.words.some((w) => !L.found[w]);
+  };
+
+  /** Reveal one unfound word's first cell. `countsForStars`: adds to the star-penalty hint count. */
+  const applyHint = (countsForStars: boolean) => {
+    const L = live.current;
+    const left = L.puzzle.placements.filter((p) => !L.found[p.word]);
+    if (left.length === 0 || L.won) return;
     const p = left[Math.floor(Math.random() * left.length)];
-    if (!free) setHints((h) => h + 1); // free (ad-supported) hints don't cost a star
+    if (countsForStars) setHints((h) => h + 1);
     setHintCell({ row: p.row, col: p.col });
     flash(
       lc?.mystery
@@ -290,25 +327,56 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
     hintTimer.current = setTimeout(() => setHintCell(null), 3500);
   };
 
-  // Opt-in rewarded video: the player chooses to watch it and gets a hint that keeps their stars.
-  const watchForHint = async () => {
-    if (adBusy || won) return;
-    setAdBusy(true);
-    try {
-      if (await showRewardedAd()) giveHint(true);
-    } finally {
-      setAdBusy(false);
+  const openHintDialog = () => {
+    if (won) return;
+    setHintMessage(null);
+    setHintOpen(true);
+    track('hint_requested', { level: level ?? 0, mode });
+  };
+
+  // Option 1: pay coins. Charged only if the hint is really applied; refused cleanly if too poor.
+  const hintWithCoins = () => {
+    const result = buyHintWithCoins({
+      economy,
+      canApplyHint,
+      applyHint: () => applyHint(HINT_RULES.coinHintCountsForStars),
+    });
+    if (result === 'applied') {
+      track('hint_used', { level: level ?? 0, method: 'coins' });
+      setHintOpen(false);
+    } else if (result === 'insufficient') {
+      setHintMessage('Not enough coins yet. Watch an ad for a free hint, or earn more coins.');
+    } else if (result === 'nothing-to-hint') {
+      setHintOpen(false);
     }
   };
 
-  // Between puzzles: maybe show a (rate-limited) full-screen ad, then carry on.
+  // Option 2: watch a rewarded ad. The hint is applied only when the SDK confirms the reward.
+  const hintWithAd = async () => {
+    setHintMessage(null);
+    track('rewarded_ad_requested', { placement: 'hint' });
+    const result = await getHintFromAd({ canApplyHint, applyHint: () => applyHint(false), requestRewardedAd });
+    if (result.ok) {
+      track('rewarded_ad_completed', { placement: 'hint' });
+      track('hint_used', { level: level ?? 0, method: 'ad' });
+      setHintOpen(false);
+      return;
+    }
+    if (result.reason !== 'busy') track('rewarded_ad_failed', { placement: 'hint', reason: result.reason });
+    setHintMessage(rewardedFailureMessage(result.reason));
+  };
+
+  // ---- between puzzles ---------------------------------------------------------------------------
+  // The ONLY place an interstitial can appear: the player finished a puzzle, saw their rewards, and
+  // tapped Continue. Restart / Replay never go through here.
   const continueAfterAd = async (nextLevel: number, action: () => void) => {
-    if (adBusy) return;
-    setAdBusy(true);
+    if (continuing) return;
+    setContinuing(true);
     try {
-      await maybeShowInterstitial(nextLevel);
+      const status = await maybeShowInterstitial(nextLevel);
+      if (status === 'shown') track('interstitial_shown', { next_level: nextLevel });
     } finally {
-      setAdBusy(false);
+      setContinuing(false);
     }
     action();
   };
@@ -358,6 +426,7 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${(foundCount / Math.max(1, words.length)) * 100}%` }]} />
           </View>
+          <CoinChip compact />
         </View>
 
         <View style={styles.words}>
@@ -409,7 +478,8 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            onPress={() => giveHint(false)}
+            accessibilityLabel="Get a hint"
+            onPress={openHintDialog}
             disabled={!!won}
             style={({ pressed }) => [styles.action, pressed && { opacity: 0.8 }]}
           >
@@ -417,29 +487,28 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
               💡 Hint{hints > 0 ? ` (${hints})` : ''}
             </Text>
           </Pressable>
-          {freeHintAvailable && !won && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Watch a video for a free hint that keeps your stars"
-              onPress={watchForHint}
-              disabled={adBusy}
-              style={({ pressed }) => [styles.action, styles.actionFree, pressed && { opacity: 0.8 }]}
-            >
-              <Text style={styles.actionText} numberOfLines={1}>
-                📺 Free hint
-              </Text>
-            </Pressable>
-          )}
           <Pressable
             accessibilityRole="button"
             onPress={restart}
             style={({ pressed }) => [styles.action, pressed && { opacity: 0.8 }]}
           >
             <Text style={styles.actionText} numberOfLines={1}>
-              {level ? '↻ Restart' : freeHintAvailable && !won ? '🔄 New' : '🔄 New puzzle'}
+              {level ? '↻ Restart' : '🔄 New puzzle'}
             </Text>
           </Pressable>
         </View>
+
+        <HintDialog
+          visible={hintOpen}
+          coins={coins}
+          adsEnabled={ads.enabled}
+          adReady={ads.rewardedReady}
+          adBusy={ads.busy}
+          message={hintMessage}
+          onUseCoins={hintWithCoins}
+          onWatchAd={hintWithAd}
+          onCancel={() => setHintOpen(false)}
+        />
 
         <Modal visible={!!won} transparent animationType="fade" onRequestClose={() => setWon(null)}>
           <View style={styles.backdrop}>
@@ -459,6 +528,7 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
               <Text style={styles.cardSub}>
                 {hints === 0 ? 'No hints used — perfect!' : `${hints} hint${hints > 1 ? 's' : ''} used`}
               </Text>
+              <RewardSummary lines={won?.rewards ?? []} />
               {won?.unlocked && <Text style={styles.unlock}>🔓 Level {won.unlocked} unlocked!</Text>}
               {level && level >= MAX_LEVELS && (
                 <Text style={styles.unlock}>You&apos;ve finished every level — amazing!</Text>
@@ -467,29 +537,24 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
               {level && level < MAX_LEVELS ? (
                 <Pressable
                   accessibilityRole="button"
-                  disabled={adBusy}
+                  disabled={continuing}
                   onPress={() => continueAfterAd(level + 1, () => onNextLevel(level + 1))}
-                  style={styles.primary}
+                  style={[styles.primary, continuing && { opacity: 0.7 }]}
                 >
                   <Text style={styles.primaryText}>Next level ▶</Text>
                 </Pressable>
               ) : (
                 <Pressable
                   accessibilityRole="button"
-                  disabled={adBusy}
-                  onPress={() => continueAfterAd(level ?? 9999, restart)}
-                  style={styles.primary}
+                  disabled={continuing}
+                  onPress={() => (level ? restart() : continueAfterAd(9999, restart))}
+                  style={[styles.primary, continuing && { opacity: 0.7 }]}
                 >
                   <Text style={styles.primaryText}>{level ? 'Replay level' : 'Play again'}</Text>
                 </Pressable>
               )}
               {level && level < MAX_LEVELS && (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={adBusy}
-                  onPress={() => continueAfterAd(level, restart)}
-                  style={styles.secondary}
-                >
+                <Pressable accessibilityRole="button" disabled={continuing} onPress={restart} style={styles.secondary}>
                   <Text style={styles.secondaryText}>Replay level</Text>
                 </Pressable>
               )}
@@ -529,7 +594,6 @@ const styles = StyleSheet.create({
   toastText: { color: ink, fontWeight: '800', textAlign: 'center' },
   actions: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingBottom: 12, paddingTop: 4 },
   action: { flex: 1, backgroundColor: 'rgba(0,0,0,0.28)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', borderRadius: 24, paddingVertical: 14, alignItems: 'center' },
-  actionFree: { backgroundColor: 'rgba(255,209,102,0.28)', borderColor: 'rgba(255,209,102,0.8)' },
   actionText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   backdrop: { flex: 1, backgroundColor: 'rgba(10,6,30,0.7)', justifyContent: 'center', padding: 24 },
   card: { backgroundColor: '#fff', borderRadius: 24, padding: 24, alignItems: 'center', gap: 6 },

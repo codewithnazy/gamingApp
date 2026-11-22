@@ -3,6 +3,9 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BannerSlot } from '../ads';
+import { CoinChip } from '../components/CoinChip';
+import { FreeCoinsDialog } from '../components/FreeCoinsDialog';
+import { REWARDS } from '../economy';
 import { GradientBackground } from '../components/GradientBackground';
 import { glass, ink } from '../glass';
 import * as feedback from '../haptics';
@@ -36,6 +39,7 @@ const TILE_GAP = 10;
 
 export function SearchSetupScreen({ settings, best, progress, onChange, onStartQuick, onStartLevel, onBack }: Props) {
   const { width } = useWindowDimensions();
+  const [freeOpen, setFreeOpen] = useState(false);
   const palette = paletteById(settings.palette);
   const bestKey = `${settings.theme}:${settings.difficulty}`;
   const isLevels = settings.mode === 'levels';
@@ -69,7 +73,7 @@ export function SearchSetupScreen({ settings, best, progress, onChange, onStartQ
             <Text style={styles.backText}>‹</Text>
           </Pressable>
           <Text style={[glass.text, styles.title]}>Word Search</Text>
-          <View style={styles.backSpacer} />
+          <CoinChip compact onPress={() => setFreeOpen(true)} />
         </View>
 
         <View style={styles.modeRow}>
@@ -99,6 +103,18 @@ export function SearchSetupScreen({ settings, best, progress, onChange, onStartQ
                   ⭐ {totalStars(progress)}
                   <Text style={styles.summaryStarsMax}>/{MAX_LEVELS * 3}</Text>
                 </Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Free coins: watch an ad for ${REWARDS.rewardedAd} coins`}
+                onPress={() => {
+                  feedback.tap();
+                  setFreeOpen(true);
+                }}
+                style={({ pressed }) => [styles.freeRow, pressed && { opacity: 0.85 }]}
+              >
+                <Text style={styles.freeRowText}>📺  Free Coins  ·  +{REWARDS.rewardedAd} 🪙</Text>
               </Pressable>
 
               <View style={styles.worldBar}>
@@ -284,6 +300,7 @@ export function SearchSetupScreen({ settings, best, progress, onChange, onStartQ
           </Pressable>
         </View>
         <BannerSlot />
+        <FreeCoinsDialog visible={freeOpen} onClose={() => setFreeOpen(false)} />
       </SafeAreaView>
     </GradientBackground>
   );
@@ -378,6 +395,8 @@ const styles = StyleSheet.create({
   summarySub: { color: 'rgba(255,255,255,0.88)', fontSize: 13, marginTop: 3 },
   summaryStars: { fontSize: 22, fontWeight: '900' },
   summaryStarsMax: { fontSize: 13, fontWeight: '700', opacity: 0.8 },
+  freeRow: { alignSelf: 'center', marginTop: 12, backgroundColor: 'rgba(255,209,102,0.95)', borderRadius: 22, paddingHorizontal: 18, paddingVertical: 10, minHeight: 44, justifyContent: 'center' },
+  freeRowText: { color: ink, fontWeight: '900', fontSize: 14 },
   worldBar: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 18 },
   arrow: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.28)' },
   arrowText: { color: '#fff', fontSize: 28, lineHeight: 32, fontWeight: '700' },

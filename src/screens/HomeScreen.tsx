@@ -1,6 +1,10 @@
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BannerSlot } from '../ads';
+import { CoinChip } from '../components/CoinChip';
+import { FreeCoinsDialog } from '../components/FreeCoinsDialog';
+import { REWARDS } from '../economy';
 import { GradientBackground } from '../components/GradientBackground';
 import { glass, ink } from '../glass';
 import * as feedback from '../haptics';
@@ -14,6 +18,7 @@ interface Props {
 }
 
 export function HomeScreen({ settings, onSearch, onHeist }: Props) {
+  const [freeOpen, setFreeOpen] = useState(false);
   const go = (fn: () => void) => () => {
     feedback.tap();
     fn();
@@ -21,6 +26,10 @@ export function HomeScreen({ settings, onSearch, onHeist }: Props) {
   return (
     <GradientBackground palette={paletteById(settings.palette)}>
       <SafeAreaView style={styles.fill}>
+        <View style={styles.topBar}>
+          <CoinChip onPress={() => setFreeOpen(true)} />
+        </View>
+
         <View style={styles.hero}>
           <Text style={styles.logo}>🎯</Text>
           <Text style={[glass.text, styles.title]}>WORD ARCADE</Text>
@@ -45,9 +54,22 @@ export function HomeScreen({ settings, onSearch, onHeist }: Props) {
           />
         </View>
 
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Free coins: watch an ad for ${REWARDS.rewardedAd} coins`}
+          onPress={() => {
+            feedback.tap();
+            setFreeOpen(true);
+          }}
+          style={({ pressed }) => [styles.freeCoins, pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}
+        >
+          <Text style={styles.freeCoinsText}>📺  Free Coins  ·  +{REWARDS.rewardedAd} 🪙</Text>
+        </Pressable>
+
         <View style={styles.bannerSpace}>
           <BannerSlot />
         </View>
+        <FreeCoinsDialog visible={freeOpen} onClose={() => setFreeOpen(false)} />
       </SafeAreaView>
     </GradientBackground>
   );
@@ -82,7 +104,10 @@ function GameCard(props: {
 
 const styles = StyleSheet.create({
   fill: { flex: 1, paddingHorizontal: 18 },
-  hero: { alignItems: 'center', paddingTop: 28, paddingBottom: 18 },
+  topBar: { flexDirection: 'row', justifyContent: 'flex-end', paddingTop: 8 },
+  hero: { alignItems: 'center', paddingTop: 6, paddingBottom: 18 },
+  freeCoins: { alignSelf: 'center', marginTop: 18, backgroundColor: '#ffd166', borderRadius: 26, paddingHorizontal: 22, paddingVertical: 14, minHeight: 48, justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+  freeCoinsText: { color: ink, fontWeight: '900', fontSize: 16 },
   logo: { fontSize: 56 },
   title: { fontSize: 34, fontWeight: '900', letterSpacing: 4, marginTop: 6 },
   tagline: { fontSize: 15, marginTop: 4, opacity: 0.95 },
