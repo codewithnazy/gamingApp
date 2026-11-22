@@ -1,17 +1,19 @@
 import type { TileState } from './game.ts';
 
 export const colors = {
-  bg: '#0f1115',
-  panel: '#1a1d24',
-  border: '#343944',
-  text: '#f3f4f6',
-  muted: '#9aa1ad',
-  accent: '#f5b942',
+  bg: '#0b1020',
+  panel: '#151b2e',
+  panelAlt: '#1d2540',
+  border: '#2a3352',
+  text: '#f4f6fb',
+  muted: '#8f9bb8',
+  accent: '#ffb020',
+  accentText: '#1a1200',
   danger: '#ef4444',
-  correct: '#2f9e5b',
-  present: '#c9a227',
-  absent: '#3a3f4a',
-  key: '#565c69',
+  correct: '#1fa35c',
+  present: '#d29a14',
+  absent: '#2b3350',
+  key: '#3a4566',
 } as const;
 
 export function tileColor(state: TileState | undefined): string | undefined {

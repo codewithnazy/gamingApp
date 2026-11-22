@@ -8,9 +8,11 @@ import {
   Text,
   View,
   useWindowDimensions,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { Board } from './src/components/Board';
+import { Board, TILE_GAP } from './src/components/Board';
+import { HelpModal } from './src/components/HelpModal';
 import { Keyboard } from './src/components/Keyboard';
 import { ResultModal } from './src/components/ResultModal';
 import {
@@ -30,8 +32,11 @@ import {
   type GameState,
   type Stats,
 } from './src/game.ts';
+import * as feedback from './src/haptics';
 import { loadGame, loadStats, saveGame, saveStats } from './src/storage';
 import { colors } from './src/theme';
+
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
 export default function App() {
   return (
@@ -42,18 +47,41 @@ export default function App() {
 }
 
 function Game() {
-  const { width } = useWindowDimensions();
+  const { height: windowHeight } = useWindowDimensions();
   const [today, setToday] = useState(() => dateKey());
   const [game, setGame] = useState<GameState | null>(null);
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [current, setCurrent] = useState('');
   const [message, setMessage] = useState<string | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [resultOpen, setResultOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [animateRow, setAnimateRow] = useState(-1);
+  const [shakeKey, setShakeKey] = useState(0);
+  const [area, setArea] = useState({ w: 0, h: 0 });
   const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const answer = useMemo(() => dailyAnswer(today), [today]);
   const rival = useMemo(() => dailyRival(today), [today]);
-  const tileSize = Math.min(62, Math.floor((width - 32 - 4 * 6) / WORD_LENGTH));
+
+  // Fit the board to the space actually available, so it never gets cramped or clipped.
+  const tileSize = area.w
+    ? clamp(
+        Math.floor(
+          Math.min(
+            (area.w - 32 - (WORD_LENGTH - 1) * TILE_GAP) / WORD_LENGTH,
+            (area.h - 5 * TILE_GAP - 8) / 6,
+          ),
+        ),
+        30,
+        68,
+      )
+    : 0;
+  const keyHeight = clamp(Math.round(windowHeight * 0.065), 42, 58);
+
+  const onAreaLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setArea({ w: Math.round(width), h: Math.round(height) });
+  };
 
   const flash = useCallback((text: string) => {
     setMessage(text);
@@ -70,7 +98,10 @@ function Game() {
       setStats(savedStats);
       setGame(saved ?? newGame(today));
       setCurrent('');
-      setModalOpen(saved !== null && saved.status !== 'playing');
+      setAnimateRow(-1);
+      setResultOpen(saved !== null && saved.status !== 'playing');
+      // First-ever launch: show the rules.
+      if (saved === null && savedStats.played === 0) setHelpOpen(true);
     })();
     return () => {
       cancelled = true;
@@ -100,7 +131,12 @@ function Game() {
         const nextStats = recordResult(stats, next);
         setStats(nextStats);
         saveStats(nextStats);
-        setTimeout(() => setModalOpen(true), 900);
+        // Wait for the reveal animation to finish before celebrating.
+        setTimeout(() => {
+          if (next.status === 'won') feedback.success();
+          else feedback.error();
+          setResultOpen(true);
+        }, 1700);
       }
     },
     [stats],
@@ -113,11 +149,19 @@ function Game() {
   };
   const onBackspace = () => setCurrent((c) => c.slice(0, -1));
 
+  const reject = (text: string) => {
+    feedback.warning();
+    setShakeKey((k) => k + 1);
+    flash(text);
+  };
+
   const onEnter = () => {
     if (!game || !playing) return;
-    if (current.length < WORD_LENGTH) return flash('Not enough letters');
-    if (!isValidGuess(current)) return flash('Not in word list');
-    commit(applyGuess(game, current, answer));
+    if (current.length < WORD_LENGTH) return reject('Not enough letters');
+    if (!isValidGuess(current)) return reject('Not in word list');
+    const next = applyGuess(game, current, answer);
+    setAnimateRow(next.guesses.length - 1);
+    commit(next);
     setCurrent('');
   };
 
@@ -125,6 +169,7 @@ function Game() {
     if (!game || !canSteal(game, answer)) return;
     const next = applySteal(game, answer);
     const pos = next.steals[next.steals.length - 1];
+    feedback.success();
     flash(`🕶️ Stole "${answer[pos]}" — letter #${pos + 1}`);
     commit(next);
   };
@@ -139,61 +184,71 @@ function Game() {
 
   const keyStates = letterStates(game.guesses, answer, game.steals);
   const stealable = canSteal(game, answer);
-  const hint = Array.from({ length: WORD_LENGTH }, (_, i) =>
-    game.steals.includes(i) ? answer[i] : '_',
-  ).join(' ');
 
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="light" />
+
       <View style={styles.header}>
-        <View style={{ width: 44 }} />
+        <IconButton label="?" a11y="How to play" onPress={() => setHelpOpen(true)} />
         <View style={styles.titleWrap}>
           <Text style={styles.title}>WORD HEIST</Text>
           <Text style={styles.date}>{today}</Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Stats"
-          onPress={() => setModalOpen(true)}
-          style={styles.iconBtn}
-        >
-          <Text style={styles.icon}>📊</Text>
-        </Pressable>
+        <IconButton label="📊" a11y="Stats" onPress={() => setResultOpen(true)} />
       </View>
 
-      <View style={styles.body}>
-        <View style={styles.banner}>
-          <Text style={styles.bannerText}>
-            🕶️ Today&apos;s mark: <Text style={styles.bold}>{rival}</Text>
+      <View style={styles.banner}>
+        <View style={styles.bannerLeft}>
+          <Text style={styles.bannerLabel}>TODAY&apos;S MARK</Text>
+          <Text style={styles.bannerName} numberOfLines={2}>
+            🕶️ {rival}
           </Text>
-          <Text style={styles.hint}>{hint}</Text>
         </View>
-
-        <View style={styles.toastSlot}>
-          {message && (
-            <View style={styles.toast}>
-              <Text style={styles.toastText}>{message}</Text>
+        <View style={styles.slots}>
+          {Array.from({ length: WORD_LENGTH }, (_, i) => (
+            <View key={i} style={[styles.slot, game.steals.includes(i) && styles.slotFilled]}>
+              <Text style={styles.slotText}>{game.steals.includes(i) ? answer[i] : ''}</Text>
             </View>
-          )}
+          ))}
         </View>
-
-        <Board guesses={game.guesses} current={current} answer={answer} tileSize={tileSize} />
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !stealable }}
-          disabled={!stealable}
-          onPress={onSteal}
-          style={[styles.steal, !stealable && styles.stealOff]}
-        >
-          <Text style={styles.stealText}>
-            {game.steals.length > 0
-              ? 'Heist used'
-              : `🕶️ Steal a letter (−${STEAL_PENALTY} pts)`}
-          </Text>
-        </Pressable>
       </View>
+
+      <View style={styles.boardArea} onLayout={onAreaLayout}>
+        {tileSize > 0 && (
+          <Board
+            guesses={game.guesses}
+            current={current}
+            answer={answer}
+            tileSize={tileSize}
+            animateRow={animateRow}
+            shakeKey={shakeKey}
+          />
+        )}
+        {message && (
+          <View pointerEvents="none" style={styles.toast}>
+            <Text style={styles.toastText}>{message}</Text>
+          </View>
+        )}
+      </View>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !stealable }}
+        disabled={!stealable}
+        onPress={onSteal}
+        style={({ pressed }) => [
+          styles.steal,
+          !stealable && styles.stealOff,
+          pressed && { opacity: 0.8 },
+        ]}
+      >
+        <Text style={[styles.stealText, !stealable && { color: colors.muted }]}>
+          {game.steals.length > 0
+            ? '🕶️ Heist used'
+            : `🕶️ Steal a letter  ·  −${STEAL_PENALTY} pts`}
+        </Text>
+      </Pressable>
 
       <View style={styles.footer}>
         <Keyboard
@@ -202,60 +257,114 @@ function Game() {
           onEnter={onEnter}
           onBackspace={onBackspace}
           disabled={!playing}
+          keyHeight={keyHeight}
         />
       </View>
 
       <ResultModal
-        visible={modalOpen}
-        onClose={() => setModalOpen(false)}
+        visible={resultOpen}
+        onClose={() => setResultOpen(false)}
         game={game}
         answer={answer}
         rival={rival}
         stats={stats}
       />
+      <HelpModal visible={helpOpen} onClose={() => setHelpOpen(false)} />
     </SafeAreaView>
+  );
+}
+
+function IconButton(props: { label: string; a11y: string; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={props.a11y}
+      onPress={props.onPress}
+      style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+    >
+      <Text style={styles.icon}>{props.label}</Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   center: { alignItems: 'center', justifyContent: 'center' },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    paddingVertical: 6,
   },
   titleWrap: { alignItems: 'center' },
-  title: { color: colors.text, fontSize: 22, fontWeight: '900', letterSpacing: 3 },
-  date: { color: colors.muted, fontSize: 11 },
-  iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  icon: { fontSize: 22 },
-  body: { flex: 1, alignItems: 'center', paddingTop: 12, gap: 10 },
-  banner: { alignItems: 'center', gap: 2 },
-  bannerText: { color: colors.muted, fontSize: 14 },
-  bold: { color: colors.accent, fontWeight: '800' },
-  hint: { color: colors.text, fontSize: 18, fontWeight: '800', letterSpacing: 2 },
-  toastSlot: { height: 44, justifyContent: 'center' },
-  toast: {
-    backgroundColor: colors.text,
-    borderRadius: 8,
+  title: { color: colors.text, fontSize: 24, fontWeight: '900', letterSpacing: 4 },
+  date: { color: colors.muted, fontSize: 11, letterSpacing: 1 },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.panel,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  icon: { fontSize: 20, color: colors.text, fontWeight: '800' },
+
+  banner: {
+    marginHorizontal: 16,
+    marginTop: 6,
+    backgroundColor: colors.panel,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 10,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    maxWidth: '92%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
   },
-  toastText: { color: colors.bg, fontWeight: '700', textAlign: 'center' },
-  steal: {
-    marginTop: 4,
-    backgroundColor: colors.accent,
+  bannerLeft: { flexShrink: 1 },
+  bannerLabel: { color: colors.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.5 },
+  bannerName: { color: colors.accent, fontSize: 15, fontWeight: '800', marginTop: 2 },
+  slots: { flexDirection: 'row', gap: 4 },
+  slot: {
+    width: 26,
+    height: 32,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slotFilled: { backgroundColor: colors.correct, borderColor: colors.correct, borderStyle: 'solid' },
+  slotText: { color: colors.text, fontWeight: '800', fontSize: 17 },
+
+  boardArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  toast: {
+    position: 'absolute',
+    top: 6,
+    backgroundColor: colors.text,
     borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    maxWidth: '92%',
+    zIndex: 10,
   },
-  stealOff: { backgroundColor: colors.absent },
-  stealText: { color: '#111', fontWeight: '800' },
-  footer: { paddingHorizontal: 4, paddingBottom: 12 },
+  toastText: { color: colors.bg, fontWeight: '800', textAlign: 'center' },
+
+  steal: {
+    alignSelf: 'center',
+    backgroundColor: colors.accent,
+    borderRadius: 24,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  stealOff: { backgroundColor: colors.panelAlt },
+  stealText: { color: colors.accentText, fontWeight: '800', fontSize: 15 },
+
+  footer: { paddingBottom: 8 },
 });
