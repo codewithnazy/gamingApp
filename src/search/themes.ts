@@ -1,3 +1,5 @@
+import { EXTRA_THEMES, EXTRA_WORDS } from './moreWords.ts';
+
 export type ThemeId =
   | 'animals'
   | 'food'
@@ -19,7 +21,19 @@ export type ThemeId =
   | 'insects'
   | 'clothes'
   | 'kitchen'
-  | 'colors';
+  | 'colors'
+  | 'birds'
+  | 'fruits'
+  | 'vegetables'
+  | 'body'
+  | 'emotions'
+  | 'tools'
+  | 'flowers'
+  | 'toys'
+  | 'dinosaurs'
+  | 'festivals'
+  /** Virtual theme: every word from every theme, jumbled together. */
+  | 'mixed';
 
 export interface WordTheme {
   id: ThemeId;
@@ -30,7 +44,7 @@ export interface WordTheme {
 
 const list = (s: string) => s.trim().split(/\s+/);
 
-export const THEMES: WordTheme[] = [
+const BASE_THEMES: WordTheme[] = [
   {
     id: 'animals',
     label: 'Animals',
@@ -247,7 +261,25 @@ export const THEMES: WordTheme[] = [
   },
 ];
 
-export const themeById = (id: ThemeId): WordTheme => THEMES.find((t) => t.id === id) ?? THEMES[0];
+const dedupe = (words: string[]) => [...new Set(words)];
+
+/** Every real theme: base words + extra words, plus the brand-new themes. */
+export const THEMES: WordTheme[] = [
+  ...BASE_THEMES.map((t) => ({ ...t, words: dedupe([...t.words, ...list(EXTRA_WORDS[t.id] ?? '')]) })),
+  ...EXTRA_THEMES.map((t) => ({ id: t.id as ThemeId, label: t.label, emoji: t.emoji, words: dedupe(list(t.words)) })),
+];
+
+/** Every distinct word across all themes — the pool for jumbled levels. */
+export const ALL_WORDS: string[] = dedupe(THEMES.flatMap((t) => t.words));
+
+/** "Mixed": words from every theme jumbled together in the same puzzle. */
+export const MIXED_THEME: WordTheme = { id: 'mixed', label: 'Mixed', emoji: '🎲', words: ALL_WORDS };
+
+/** What the Quick play picker offers: Mixed first, then each single theme. */
+export const THEME_CHOICES: WordTheme[] = [MIXED_THEME, ...THEMES];
+
+export const themeById = (id: ThemeId): WordTheme =>
+  id === 'mixed' ? MIXED_THEME : (THEMES.find((t) => t.id === id) ?? MIXED_THEME);
 
 // ---- Background palettes -------------------------------------------------
 

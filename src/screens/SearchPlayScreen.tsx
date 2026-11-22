@@ -80,7 +80,8 @@ const GridCell = memo(function GridCell(props: { letter: string; size: number; v
 
 export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, progress, onProgress, onNextLevel }: Props) {
   const lc = level ? levelConfig(level) : null;
-  const theme = lc ? lc.theme : themeById(settings.theme);
+  // Levels jumble every theme together; quick play uses the chosen theme (or Mixed).
+  const theme = themeById(settings.theme);
   const palette = paletteById(settings.palette);
   const cfg = DIFFICULTIES[settings.difficulty];
   const n = lc ? lc.size : cfg.size;
@@ -312,8 +313,8 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
             <Text style={[glass.text, styles.sub]}>
               {lc
                 ? lc.mystery
-                  ? `❓ Mystery · ${theme.label} · ${n}×${n}`
-                  : `${theme.emoji} ${theme.label} · ${n}×${n}`
+                  ? `❓ Mystery · ${n}×${n}`
+                  : `${lc.icon} ${lc.tier} · ${n}×${n}`
                 : `${cfg.label} · ${n}×${n}`}
             </Text>
           </View>

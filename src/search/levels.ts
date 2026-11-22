@@ -1,6 +1,6 @@
 // Level progression for Word Search. Pure logic (no React / Expo) so it is easy to test.
 import { ALL_DIRS, generatePuzzleFromSpec, type Dir, type Puzzle } from './engine.ts';
-import { THEMES, type WordTheme } from './themes.ts';
+import { ALL_WORDS } from './themes.ts';
 
 export const MAX_LEVELS = 500;
 export const WORLD_SIZE = 20;
@@ -61,7 +61,6 @@ export type Tier = 'Warm-up' | 'Diagonals' | 'Backwards' | 'Expert' | 'Master' |
 
 export interface LevelConfig {
   level: number;
-  theme: WordTheme;
   size: number;
   wordCount: number;
   dirs: Dir[];
@@ -75,7 +74,18 @@ export interface LevelConfig {
   mystery: boolean;
   tier: Tier;
   tierBlurb: string;
+  /** Emoji shown on the level tile for this difficulty tier. */
+  icon: string;
 }
+
+export const TIER_ICONS: Record<Tier, string> = {
+  'Warm-up': '🌱',
+  Diagonals: '↗️',
+  Backwards: '🔄',
+  Expert: '🔥',
+  Master: '💎',
+  Legend: '👑',
+};
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
@@ -87,6 +97,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n
  *  - levels 60-199: decoy filler letters make false starts likelier; words up to 10 letters
  *  - levels 200+:   maximum decoys
  *  - from level 30, every 10th level is a Mystery level (word list hidden)
+ * Every level draws its words from ALL themes at once, so the lists are always a jumble.
  * The word count tops out at 16.
  */
 export function levelConfig(level: number): LevelConfig {
@@ -134,7 +145,6 @@ export function levelConfig(level: number): LevelConfig {
 
   return {
     level: lv,
-    theme: THEMES[(lv - 1) % THEMES.length],
     size,
     wordCount,
     dirs,
@@ -145,13 +155,15 @@ export function levelConfig(level: number): LevelConfig {
     mystery: lv >= 30 && lv % 10 === 0,
     tier,
     tierBlurb,
+    icon: TIER_ICONS[tier],
   };
 }
 
 export function generateLevelPuzzle(level: number): Puzzle {
   const c = levelConfig(level);
+  // Every level jumbles words from all themes together.
   return generatePuzzleFromSpec({
-    pool: c.theme.words,
+    pool: ALL_WORDS,
     size: c.size,
     wordCount: c.wordCount,
     dirs: c.dirs,

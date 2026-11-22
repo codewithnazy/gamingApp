@@ -16,7 +16,7 @@ import {
   worldOf,
   type LevelProgress,
 } from '../search/levels';
-import { PALETTES, THEMES, paletteById } from '../search/themes';
+import { PALETTES, THEME_CHOICES, paletteById } from '../search/themes';
 import type { SearchMode, Settings } from '../settings';
 import type { BestTimes } from '../storage';
 
@@ -90,7 +90,7 @@ export function SearchSetupScreen({ settings, best, progress, onChange, onStartQ
                     {allDone ? '🏆 All levels complete!' : `Level ${current} unlocked`}
                   </Text>
                   <Text style={styles.summarySub}>
-                    {cur.theme.emoji} {cur.theme.label} · {cur.size}×{cur.size} · {cur.wordCount} words
+                    {cur.icon} {cur.tier} · {cur.size}×{cur.size} · {cur.wordCount} words
                     {cur.mystery ? ' · ❓ Mystery' : ''}
                   </Text>
                 </View>
@@ -153,7 +153,7 @@ export function SearchSetupScreen({ settings, best, progress, onChange, onStartQ
                     locked={lv > progress.unlocked}
                     isCurrent={lv === progress.unlocked}
                     stars={progress.stars[String(lv)] ?? 0}
-                    emoji={levelConfig(lv).mystery ? '❓' : levelConfig(lv).theme.emoji}
+                    emoji={levelConfig(lv).mystery ? '❓' : levelConfig(lv).icon}
                     onPress={() => {
                       feedback.success();
                       onStartLevel(lv);
@@ -164,9 +164,14 @@ export function SearchSetupScreen({ settings, best, progress, onChange, onStartQ
             </>
           ) : (
             <>
-              <Text style={[glass.text, styles.section]}>Theme</Text>
-              <View style={styles.chips}>
-                {THEMES.map((t) => {
+              <Text style={[glass.text, styles.section]}>Words</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chipsRow}
+                style={styles.chipsScroll}
+              >
+                {THEME_CHOICES.map((t) => {
                   const on = t.id === settings.theme;
                   return (
                     <Pressable
@@ -181,7 +186,10 @@ export function SearchSetupScreen({ settings, best, progress, onChange, onStartQ
                     </Pressable>
                   );
                 })}
-              </View>
+              </ScrollView>
+              <Text style={[glass.text, styles.hint]}>
+                {settings.theme === 'mixed' ? 'Words from every theme, jumbled together' : 'Only words from this theme'}
+              </Text>
 
               <Text style={[glass.text, styles.section]}>Difficulty</Text>
               <View style={styles.diffRow}>
@@ -388,6 +396,8 @@ const styles = StyleSheet.create({
   tileNum: { color: '#fff', fontSize: 22, fontWeight: '900', lineHeight: 26 },
   tileStars: { color: '#ffd166', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   lock: { fontSize: 20 },
+  chipsScroll: { marginHorizontal: -16 },
+  chipsRow: { paddingHorizontal: 16, gap: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 24, backgroundColor: 'rgba(0,0,0,0.24)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
   chipOn: { backgroundColor: '#fff', borderColor: '#fff' },

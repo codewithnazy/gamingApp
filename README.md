@@ -23,16 +23,18 @@ otherwise 1). Pick a world with the ‹ › arrows, or tap the summary card to j
 Every 10th level from level 30 is a **❓ Mystery level**: the word list is hidden (you only see each
 word's first letter and length) and hints say how long the word is, not what it is.
 
-The theme changes each level (21 themes). A level is always the same puzzle, so replays are fair;
-progress, stars and best times are saved on the device.
+Words in every level are **jumbled from all themes together** (e.g. `NOODLE BOLTS IVORY MYTH`),
+from a pool of about 1,700 words across 31 themes. A level is always the same puzzle, so replays are
+fair; progress, stars and best times are saved on the device.
 
-**🎲 Quick play** — pick your own theme and difficulty for a fresh random puzzle.
+**🎲 Quick play** — a fresh random puzzle with your own difficulty. Words are **Mixed** (every theme
+jumbled together) by default, or pick a single theme.
 
 **Options** (saved between sessions):
 
 | Option | Choices |
 |---|---|
-| Theme (Quick play) | 21 themes: Animals, Food, Space, Ocean, Sports, Countries, Gaming, Weather, Music, Jobs, Nature, Transport, Science, School, Home, Cities, Fantasy, Insects, Clothes, Kitchen, Colors |
+| Words (Quick play) | 🎲 Mixed (default), or one of 31 themes: Animals, Food, Space, Ocean, Sports, Countries, Gaming, Weather, Music, Jobs, Nature, Transport, Science, School, Home, Cities, Fantasy, Insects, Clothes, Kitchen, Colors, Birds, Fruits, Vegetables, Body, Emotions, Tools, Flowers, Toys, Dinosaurs, Festivals |
 | Difficulty (Quick play) | **Easy** 8×8, 6 words, across/down · **Medium** 10×10, 8 words, + diagonals · **Hard** 12×12, 10 words, all 8 directions |
 | Timer | On (records your best time per theme + difficulty) or off for a relaxed game |
 | Haptics | On / off |
@@ -59,7 +61,8 @@ npm run typecheck
 - `App.tsx` — screen navigation, settings and best-times state, Android back button
 - `src/search/engine.ts` — pure word-search logic: puzzle generation, drag snapping, matching
 - `src/search/levels.ts` — 500 level configs, worlds, level puzzles, progress and unlocking
-- `src/search/themes.ts` — word lists, background palettes, found-word colours
+- `src/search/themes.ts` — themes, the mixed word pool, background palettes, found-word colours
+- `src/search/moreWords.ts` — the extra words and new themes merged into the base lists
 - `src/screens/` — `HomeScreen`, `SearchSetupScreen`, `SearchPlayScreen`, `HeistScreen`
 - `src/components/` — `GradientBackground`, and the Word Heist `Board`/`Keyboard`/modals
 - `src/game.ts` — pure Word Heist logic
@@ -68,8 +71,9 @@ npm run typecheck
 
 ## Notes and next steps
 
-- Word lists are modest (about 35 words per theme), so words repeat across 500 levels. Add more to
-  `src/search/themes.ts`; the tests validate every list against all three difficulties.
+- About 1,700 words. Across the 500 levels, roughly 88% of them appear and the typical word turns up
+  about 5 times. Add more to `src/search/moreWords.ts` (A–Z only, 4–10 letters); the tests validate
+  every word and check each theme is big enough for all three difficulties.
 - Ideas: a daily seeded puzzle, custom word lists, more themes, sound effects.
 - Word Heist's daily word uses the device's local date, and its rival is flavour text
   (no backend).

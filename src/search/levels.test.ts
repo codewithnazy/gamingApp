@@ -15,7 +15,7 @@ import {
   totalStars,
   worldOf,
 } from './levels.ts';
-import { THEMES } from './themes.ts';
+import { ALL_WORDS, MIXED_THEME, THEMES, themeById } from './themes.ts';
 
 const levels = Array.from({ length: MAX_LEVELS }, (_, i) => i + 1);
 
@@ -117,7 +117,7 @@ test('every level generates a complete, valid puzzle', () => {
   for (const lv of levels) {
     const c = levelConfig(lv);
     const p = generateLevelPuzzle(lv);
-    const tag = `level ${lv} (${c.theme.id}, ${c.size}x${c.size})`;
+    const tag = `level ${lv} (${c.size}x${c.size})`;
     assert.equal(p.size, c.size, tag);
     assert.equal(p.placements.length, c.wordCount, `${tag}: not all words placed`);
     for (const pl of p.placements) {
@@ -135,9 +135,47 @@ test('a level is the same puzzle every time (so replays and progress are fair)',
   assert.notDeepEqual(generateLevelPuzzle(1).grid, generateLevelPuzzle(2).grid);
 });
 
-test('themes rotate so neighbouring levels feel different, and every theme gets used', () => {
-  for (const lv of levels.slice(1)) assert.notEqual(levelConfig(lv).theme.id, levelConfig(lv - 1).theme.id);
-  assert.equal(new Set(levels.map((lv) => levelConfig(lv).theme.id)).size, THEMES.length);
+// ---- Jumbled themes ------------------------------------------------------------
+
+const themesOf = (word: string) => THEMES.filter((t) => t.words.includes(word)).map((t) => t.id);
+
+test('every level jumbles words from several themes instead of sticking to one', () => {
+  for (const lv of levels) {
+    const words = generateLevelPuzzle(lv).placements.map((p) => p.word);
+    const touched = new Set(words.flatMap(themesOf));
+    // "All words in one theme" must never happen.
+    const oneTheme = THEMES.some((t) => words.every((w) => t.words.includes(w)));
+    assert.ok(!oneTheme, `level ${lv}: every word comes from a single theme`);
+    assert.ok(touched.size >= 3, `level ${lv}: only ${touched.size} themes represented`);
+    assert.equal(new Set(words).size, words.length, `level ${lv}: repeated word`);
+  }
+});
+
+test('big levels mix many themes at once', () => {
+  for (const lv of [60, 117, 200, 350, 500]) {
+    const words = generateLevelPuzzle(lv).placements.map((p) => p.word);
+    const touched = new Set(words.flatMap(themesOf));
+    assert.ok(touched.size >= 8, `level ${lv}: only ${touched.size} themes among ${words.length} words`);
+  }
+});
+
+test('across the campaign, players meet a large share of the whole word pool', () => {
+  const seen = new Set<string>();
+  for (const lv of levels) for (const p of generateLevelPuzzle(lv).placements) seen.add(p.word);
+  assert.ok(ALL_WORDS.length >= 1500, `word pool shrank to ${ALL_WORDS.length}`);
+  assert.ok(seen.size >= ALL_WORDS.length * 0.6, `only ${seen.size} of ${ALL_WORDS.length} words ever appear`);
+});
+
+test('the Mixed theme is every word from every theme', () => {
+  assert.equal(themeById('mixed'), MIXED_THEME);
+  assert.deepEqual(new Set(MIXED_THEME.words), new Set(THEMES.flatMap((t) => t.words)));
+  assert.equal(new Set(MIXED_THEME.words).size, MIXED_THEME.words.length, 'no duplicates in the mixed pool');
+  assert.ok(THEMES.every((t) => t.id !== 'mixed'), 'mixed is virtual, not a real theme');
+});
+
+test('level tiles get a tier icon, not a theme', () => {
+  assert.ok(levels.every((lv) => levelConfig(lv).icon.length > 0));
+  assert.notEqual(levelConfig(1).icon, levelConfig(MAX_LEVELS).icon);
 });
 
 test('completing the highest unlocked level unlocks the next one', () => {

@@ -5,7 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { setHapticsEnabled } from './src/haptics';
 import { DIFFICULTIES } from './src/search/engine';
 import { EMPTY_PROGRESS, type LevelProgress } from './src/search/levels';
-import { PALETTES, THEMES } from './src/search/themes';
+import { PALETTES, THEME_CHOICES } from './src/search/themes';
 import { HeistScreen } from './src/screens/HeistScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { SearchPlayScreen } from './src/screens/SearchPlayScreen';
@@ -40,7 +40,7 @@ export default function App() {
       ]);
       setSettings(
         sanitizeSettings(raw, {
-          themes: THEMES.map((t) => t.id),
+          themes: THEME_CHOICES.map((t) => t.id),
           difficulties: Object.keys(DIFFICULTIES),
           palettes: PALETTES.map((p) => p.id),
         }),

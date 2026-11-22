@@ -16,7 +16,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   mode: 'levels',
-  theme: 'animals',
+  theme: 'mixed',
   difficulty: 'easy',
   timer: true,
   haptics: true,
