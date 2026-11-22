@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BannerSlot } from '../ads';
 import { GradientBackground } from '../components/GradientBackground';
 import { glass, ink } from '../glass';
 import * as feedback from '../haptics';
@@ -282,6 +283,7 @@ export function SearchSetupScreen({ settings, best, progress, onChange, onStartQ
             </Text>
           </Pressable>
         </View>
+        <BannerSlot />
       </SafeAreaView>
     </GradientBackground>
   );

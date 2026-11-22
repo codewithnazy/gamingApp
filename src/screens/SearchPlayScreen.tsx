@@ -10,6 +10,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { maybeShowInterstitial, notePuzzleCompleted, showRewardedAd, useAdsState } from '../ads';
 import { GradientBackground } from '../components/GradientBackground';
 import { glass, ink } from '../glass';
 import * as feedback from '../haptics';
@@ -86,6 +87,9 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
   const cfg = DIFFICULTIES[settings.difficulty];
   const n = lc ? lc.size : cfg.size;
   const { height: windowHeight } = useWindowDimensions();
+  const ads = useAdsState();
+  const [adBusy, setAdBusy] = useState(false);
+  const freeHintAvailable = ads.enabled && ads.rewardedReady;
 
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 2147483647));
   // A level is always the same puzzle; quick play makes a fresh one each time.
@@ -244,6 +248,7 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
       if (record) onNewBest(key, time);
     }
     const t = setTimeout(() => feedback.success(), 250);
+    notePuzzleCompleted();
     setWon({ time, stars, record, unlocked });
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -269,11 +274,11 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
     setToast(null);
   };
 
-  const useHint = () => {
+  const giveHint = (free: boolean) => {
     const left = puzzle.placements.filter((p) => !found[p.word]);
     if (left.length === 0 || won) return;
     const p = left[Math.floor(Math.random() * left.length)];
-    setHints((h) => h + 1);
+    if (!free) setHints((h) => h + 1); // free (ad-supported) hints don't cost a star
     setHintCell({ row: p.row, col: p.col });
     flash(
       lc?.mystery
@@ -283,6 +288,29 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
     feedback.tap();
     if (hintTimer.current) clearTimeout(hintTimer.current);
     hintTimer.current = setTimeout(() => setHintCell(null), 3500);
+  };
+
+  // Opt-in rewarded video: the player chooses to watch it and gets a hint that keeps their stars.
+  const watchForHint = async () => {
+    if (adBusy || won) return;
+    setAdBusy(true);
+    try {
+      if (await showRewardedAd()) giveHint(true);
+    } finally {
+      setAdBusy(false);
+    }
+  };
+
+  // Between puzzles: maybe show a (rate-limited) full-screen ad, then carry on.
+  const continueAfterAd = async (nextLevel: number, action: () => void) => {
+    if (adBusy) return;
+    setAdBusy(true);
+    try {
+      await maybeShowInterstitial(nextLevel);
+    } finally {
+      setAdBusy(false);
+    }
+    action();
   };
 
   // Per-cell view state, computed once per change.
@@ -381,18 +409,35 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            onPress={useHint}
+            onPress={() => giveHint(false)}
             disabled={!!won}
             style={({ pressed }) => [styles.action, pressed && { opacity: 0.8 }]}
           >
-            <Text style={styles.actionText}>💡 Hint{hints > 0 ? ` (${hints})` : ''}</Text>
+            <Text style={styles.actionText} numberOfLines={1}>
+              💡 Hint{hints > 0 ? ` (${hints})` : ''}
+            </Text>
           </Pressable>
+          {freeHintAvailable && !won && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Watch a video for a free hint that keeps your stars"
+              onPress={watchForHint}
+              disabled={adBusy}
+              style={({ pressed }) => [styles.action, styles.actionFree, pressed && { opacity: 0.8 }]}
+            >
+              <Text style={styles.actionText} numberOfLines={1}>
+                📺 Free hint
+              </Text>
+            </Pressable>
+          )}
           <Pressable
             accessibilityRole="button"
             onPress={restart}
             style={({ pressed }) => [styles.action, pressed && { opacity: 0.8 }]}
           >
-            <Text style={styles.actionText}>{level ? '↻ Restart' : '🔄 New puzzle'}</Text>
+            <Text style={styles.actionText} numberOfLines={1}>
+              {level ? '↻ Restart' : freeHintAvailable && !won ? '🔄 New' : '🔄 New puzzle'}
+            </Text>
           </Pressable>
         </View>
 
@@ -420,16 +465,31 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, pro
               )}
 
               {level && level < MAX_LEVELS ? (
-                <Pressable accessibilityRole="button" onPress={() => onNextLevel(level + 1)} style={styles.primary}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={adBusy}
+                  onPress={() => continueAfterAd(level + 1, () => onNextLevel(level + 1))}
+                  style={styles.primary}
+                >
                   <Text style={styles.primaryText}>Next level ▶</Text>
                 </Pressable>
               ) : (
-                <Pressable accessibilityRole="button" onPress={restart} style={styles.primary}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={adBusy}
+                  onPress={() => continueAfterAd(level ?? 9999, restart)}
+                  style={styles.primary}
+                >
                   <Text style={styles.primaryText}>{level ? 'Replay level' : 'Play again'}</Text>
                 </Pressable>
               )}
               {level && level < MAX_LEVELS && (
-                <Pressable accessibilityRole="button" onPress={restart} style={styles.secondary}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={adBusy}
+                  onPress={() => continueAfterAd(level, restart)}
+                  style={styles.secondary}
+                >
                   <Text style={styles.secondaryText}>Replay level</Text>
                 </Pressable>
               )}
@@ -469,7 +529,8 @@ const styles = StyleSheet.create({
   toastText: { color: ink, fontWeight: '800', textAlign: 'center' },
   actions: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingBottom: 12, paddingTop: 4 },
   action: { flex: 1, backgroundColor: 'rgba(0,0,0,0.28)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', borderRadius: 24, paddingVertical: 14, alignItems: 'center' },
-  actionText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  actionFree: { backgroundColor: 'rgba(255,209,102,0.28)', borderColor: 'rgba(255,209,102,0.8)' },
+  actionText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   backdrop: { flex: 1, backgroundColor: 'rgba(10,6,30,0.7)', justifyContent: 'center', padding: 24 },
   card: { backgroundColor: '#fff', borderRadius: 24, padding: 24, alignItems: 'center', gap: 6 },
   cardEmoji: { fontSize: 48 },

@@ -56,6 +56,18 @@ npm test           # game-logic tests (Node's built-in runner)
 npm run typecheck
 ```
 
+## 💰 Ads (Google AdMob)
+
+The game includes AdMob ads - an opt-in **📺 Free hint** rewarded video (it doesn't cost a star), a
+gentle between-levels ad (≤ 1 per 3 puzzles, ≥ 2 min apart, never before level 5), and banners on the
+menu screens only. Until you add your own ad unit IDs it shows **test ads only**, so it's safe to run
+and can't earn (or get you flagged) until you configure it.
+
+- Setup guide, privacy/consent steps and Play Console checklist: [`docs/MONETIZATION.md`](docs/MONETIZATION.md)
+- All settings (on/off switch, ad unit IDs, frequency): `src/ads/config.ts`
+- **Expo Go shows no ads** (it has no AdMob native code); the browser preview *simulates* them. Real
+  ads need a native build: `npx eas-cli@latest build --platform android --profile preview`
+
 ## Layout
 
 - `App.tsx` — screen navigation, settings and best-times state, Android back button
@@ -67,6 +79,7 @@ npm run typecheck
 - `src/components/` — `GradientBackground`, and the Word Heist `Board`/`Keyboard`/modals
 - `src/game.ts` — pure Word Heist logic
 - `src/*.test.ts`, `src/search/*.test.ts` — tests (including word-list validation)
+- `src/ads/` — ads: config, frequency rules, AdMob layer (`adsImpl.ts`) and a web simulation (`adsImpl.web.ts`)
 - `src/storage.ts`, `src/settings.ts` — AsyncStorage persistence
 
 ## Notes and next steps

@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BannerSlot } from '../ads';
 import { GradientBackground } from '../components/GradientBackground';
 import { glass, ink } from '../glass';
 import * as feedback from '../haptics';
@@ -43,6 +44,10 @@ export function HomeScreen({ settings, onSearch, onHeist }: Props) {
             onPress={go(onHeist)}
           />
         </View>
+
+        <View style={styles.bannerSpace}>
+          <BannerSlot />
+        </View>
       </SafeAreaView>
     </GradientBackground>
   );
@@ -82,6 +87,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 34, fontWeight: '900', letterSpacing: 4, marginTop: 6 },
   tagline: { fontSize: 15, marginTop: 4, opacity: 0.95 },
   cards: { gap: 16, marginTop: 8 },
+  bannerSpace: { flex: 1, justifyContent: 'flex-end', paddingBottom: 6 },
   card: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 },
   cardEmoji: { fontSize: 44 },
   cardTitle: { fontSize: 22, fontWeight: '900' },

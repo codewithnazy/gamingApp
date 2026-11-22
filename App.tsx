@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, BackHandler, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AdOverlay, initAds } from './src/ads';
 import { setHapticsEnabled } from './src/haptics';
 import { DIFFICULTIES } from './src/search/engine';
 import { EMPTY_PROGRESS, type LevelProgress } from './src/search/levels';
@@ -48,6 +49,11 @@ export default function App() {
       setBest(savedBest);
       setProgress(savedProgress);
     })();
+  }, []);
+
+  // Start ads once (consent form first where required). Failure just means no ads.
+  useEffect(() => {
+    initAds();
   }, []);
 
   useEffect(() => {
@@ -130,6 +136,7 @@ export default function App() {
         />
       )}
       {screen === 'heist' && <HeistScreen onBack={() => setScreen('home')} />}
+      <AdOverlay />
     </SafeAreaProvider>
   );
 }
