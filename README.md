@@ -68,11 +68,14 @@ npm run typecheck
   between-levels ad (about every 3-4 puzzles, 2 min apart, never in the first minute, never on
   Restart/Replay) and banners on the menus only. **Expo Go shows no ads**; the browser preview
   simulates them. Real ads need a native build: `npx eas-cli@latest build --platform android --profile preview`.
+- **Season Pass:** a 7-day pass with a free and a premium reward track (premium unlocked with coins),
+  key progress, a live countdown, and a "Season Pass unlocks at Level 3!" locked banner. Plus a
+  **No Ads** shortcut on Home.
 - **Analytics** (typed, anonymous, consent-aware, with a "Usage stats" switch) and a prepared
   **Remove Ads** purchase.
 
 Docs: [`ARCHITECTURE`](docs/ARCHITECTURE.md) · [`MONETIZATION` (AdMob setup)](docs/MONETIZATION.md) ·
-[`ANALYTICS` (Firebase)](docs/ANALYTICS.md) · [`BILLING` (Remove Ads)](docs/BILLING.md) ·
+[`SEASON_PASS`](docs/SEASON_PASS.md) · [`ANALYTICS` (Firebase)](docs/ANALYTICS.md) · [`BILLING` (Remove Ads)](docs/BILLING.md) ·
 [`TESTING`](docs/TESTING.md) · [`PRIVACY_POLICY_TEMPLATE`](docs/PRIVACY_POLICY_TEMPLATE.md)
 
 ## Layout
@@ -88,6 +91,7 @@ Docs: [`ARCHITECTURE`](docs/ARCHITECTURE.md) · [`MONETIZATION` (AdMob setup)](d
 - `src/*.test.ts`, `src/search/*.test.ts` — tests (including word-list validation)
 - `src/economy/` — coin ledger, rewards, flows · `src/daily/` — daily reward, challenge, streak
 - `src/ads/` — ad service: config, policy, AdMob layer (`adsImpl.ts`) and a web simulation
+- `src/pass/` — Season Pass: calendar, rules, actions
 - `src/analytics/` · `src/billing/` — analytics engine and Remove-Ads architecture
 - `src/storage.ts`, `src/settings.ts` — AsyncStorage persistence
 

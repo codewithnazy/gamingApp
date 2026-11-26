@@ -20,7 +20,8 @@ track('level_completed', {...})   <- typed against src/analytics/events.ts
 restart is the closest thing to "failed"), `hint_requested`, `hint_used`, `coins_earned`,
 `coins_spent`, `rewarded_ad_requested`, `rewarded_ad_completed`, `rewarded_ad_failed`,
 `interstitial_shown`, `daily_challenge_started`, `daily_challenge_completed`,
-`daily_reward_claimed`, `streak_updated`.
+`daily_reward_claimed`, `streak_updated`, `pass_key_earned`, `pass_reward_claimed`,
+`pass_premium_activated`.
 
 ### Privacy by construction
 - **No personal data.** Parameters are only game numbers and fixed labels (level number, stars,

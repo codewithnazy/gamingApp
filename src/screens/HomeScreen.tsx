@@ -5,8 +5,13 @@ import { BannerSlot } from '../ads';
 import { CoinChip } from '../components/CoinChip';
 import { DailyRewardDialog } from '../components/DailyRewardDialog';
 import { FreeCoinsDialog } from '../components/FreeCoinsDialog';
+import { LockedBanner } from '../components/LockedBanner';
+import { RemoveAdsDialog } from '../components/RemoveAdsDialog';
 import { GradientBackground } from '../components/GradientBackground';
 import { StreakChip } from '../components/StreakChip';
+import { PASS, claimableCount } from '../pass/pass';
+import { formatRemaining } from '../pass/season';
+import { usePassClock } from '../pass/usePassClock';
 import { canClaimDaily, dailyChallengeDone } from '../daily/rewards';
 import { useToday } from '../daily/useToday';
 import { REWARDS, useEconomy } from '../economy';
@@ -20,18 +25,26 @@ interface Props {
   onSearch: () => void;
   onDaily: () => void;
   onHeist: () => void;
+  onPass: () => void;
+  /** The highest level the player has reached (the Season Pass opens at PASS.unlockLevel). */
+  unlockedLevel: number;
 }
 
 // The daily-reward popup opens by itself at most once per app session (and only if unclaimed).
 let dailyPopupShown = false;
 
-export function HomeScreen({ settings, onSearch, onDaily, onHeist }: Props) {
+export function HomeScreen({ settings, onSearch, onDaily, onHeist, onPass, unlockedLevel }: Props) {
   const today = useToday();
   const eco = useEconomy();
   const { height } = useWindowDimensions();
-  const compact = height < 700;
+  const compact = height < 860;
+  const tight = height < 780; // short phones: cards drop their description line
   const [freeOpen, setFreeOpen] = useState(false);
   const [rewardOpen, setRewardOpen] = useState(false);
+  const [noAdsOpen, setNoAdsOpen] = useState(false);
+  const { season, remainingMs } = usePassClock();
+  const passUnlocked = unlockedLevel >= PASS.unlockLevel;
+  const passReady = passUnlocked ? claimableCount(eco, season) : 0;
   const claimable = canClaimDaily(eco, today);
   const doneToday = dailyChallengeDone(eco, today);
 
@@ -77,6 +90,41 @@ export function HomeScreen({ settings, onSearch, onDaily, onHeist }: Props) {
             {!compact && <Text style={[glass.text, styles.tagline]}>Pick a game and get hunting</Text>}
           </View>
 
+          <View style={styles.badgeRow}>
+            {passUnlocked ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Season Pass. ${formatRemaining(remainingMs)} left.${passReady > 0 ? ` ${passReady} rewards ready.` : ''}`}
+                onPress={go(onPass)}
+                style={({ pressed }) => [glass.panel, styles.passBadge, pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}
+              >
+                <Text style={styles.passEmoji}>🔑</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[glass.text, styles.passTitle]}>Season Pass</Text>
+                  <Text style={styles.passTime}>🕐 {formatRemaining(remainingMs)}</Text>
+                </View>
+                {passReady > 0 ? (
+                  <View style={styles.passDot}>
+                    <Text style={styles.passDotText}>{passReady}</Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            ) : (
+              <LockedBanner icon="🔑" text={`Season Pass unlocks at Level ${PASS.unlockLevel}!`} />
+            )}
+            {!eco.adsRemoved ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="No ads: remove ads"
+                onPress={go(() => setNoAdsOpen(true))}
+                style={({ pressed }) => [styles.noAds, pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] }]}
+              >
+                <Text style={styles.noAdsEmoji}>🚫</Text>
+                <Text style={styles.noAdsText}>NO ADS</Text>
+              </Pressable>
+            ) : null}
+          </View>
+
           <View style={[styles.cards, compact && { gap: 10 }]}>
             <GameCard
               emoji="🔎"
@@ -85,6 +133,7 @@ export function HomeScreen({ settings, onSearch, onDaily, onHeist }: Props) {
               cta="Play"
               primary
               compact={compact}
+              tight={tight}
               onPress={go(onSearch)}
             />
             <GameCard
@@ -94,6 +143,7 @@ export function HomeScreen({ settings, onSearch, onDaily, onHeist }: Props) {
               cta={doneToday ? '✅ Completed Today' : `Play · +${REWARDS.dailyChallenge} 🪙`}
               done={doneToday}
               compact={compact}
+              tight={tight}
               onPress={go(onDaily)}
             />
             <GameCard
@@ -102,6 +152,7 @@ export function HomeScreen({ settings, onSearch, onDaily, onHeist }: Props) {
               blurb="One daily 5-letter puzzle. Steal a letter if you get stuck."
               cta="Play today's"
               compact={compact}
+              tight={tight}
               onPress={go(onHeist)}
             />
           </View>
@@ -123,6 +174,7 @@ export function HomeScreen({ settings, onSearch, onDaily, onHeist }: Props) {
 
         <FreeCoinsDialog visible={freeOpen} onClose={() => setFreeOpen(false)} />
         <DailyRewardDialog visible={rewardOpen} today={today} onClose={() => setRewardOpen(false)} />
+        <RemoveAdsDialog visible={noAdsOpen} onClose={() => setNoAdsOpen(false)} />
       </SafeAreaView>
     </GradientBackground>
   );
@@ -136,6 +188,7 @@ function GameCard(props: {
   primary?: boolean;
   done?: boolean;
   compact?: boolean;
+  tight?: boolean;
   onPress: () => void;
 }) {
   return (
@@ -153,9 +206,11 @@ function GameCard(props: {
       <Text style={[styles.cardEmoji, props.compact && { fontSize: 34 }]}>{props.emoji}</Text>
       <View style={{ flex: 1 }}>
         <Text style={[glass.text, styles.cardTitle]}>{props.title}</Text>
-        <Text style={styles.cardBlurb} numberOfLines={props.compact ? 2 : 3}>
-          {props.blurb}
-        </Text>
+        {props.tight ? null : (
+          <Text style={styles.cardBlurb} numberOfLines={props.compact ? 2 : 3}>
+            {props.blurb}
+          </Text>
+        )}
         <View style={[styles.cta, props.primary && styles.ctaPrimary, props.done && styles.ctaDone]}>
           <Text style={[styles.ctaText, props.primary && { color: ink }]}>
             {props.cta}
@@ -181,6 +236,16 @@ const styles = StyleSheet.create({
   logo: { fontSize: 52 },
   title: { fontSize: 34, fontWeight: '900', letterSpacing: 4, marginTop: 4 },
   tagline: { fontSize: 15, marginTop: 4, opacity: 0.95 },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  passBadge: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
+  passEmoji: { fontSize: 26 },
+  passTitle: { fontSize: 15, fontWeight: '900' },
+  passTime: { color: 'rgba(255,255,255,0.9)', fontSize: 12.5, fontWeight: '800', marginTop: 1 },
+  passDot: { minWidth: 24, height: 24, borderRadius: 12, backgroundColor: '#ff4d6d', borderWidth: 2, borderColor: '#fff', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  passDotText: { color: '#fff', fontWeight: '900', fontSize: 12 },
+  noAds: { width: 64, minHeight: 56, borderRadius: 16, backgroundColor: 'rgba(20,12,45,0.55)', borderWidth: 2, borderColor: '#ffd166', alignItems: 'center', justifyContent: 'center' },
+  noAdsEmoji: { fontSize: 20 },
+  noAdsText: { color: '#fff', fontWeight: '900', fontSize: 11, letterSpacing: 0.5, marginTop: 1 },
   cards: { gap: 14, marginTop: 4 },
   card: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16 },
   cardCompact: { padding: 12, gap: 10 },

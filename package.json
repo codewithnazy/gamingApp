@@ -27,7 +27,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "node --experimental-strip-types --no-warnings --test src/game.test.ts src/search/engine.test.ts src/search/levels.test.ts src/ads/ads.test.ts src/economy/economy.test.ts src/economy/flows.test.ts src/daily/daily.test.ts src/analytics/analytics.test.ts src/billing/billing.test.ts",
+    "test": "node --experimental-strip-types --no-warnings --test src/game.test.ts src/search/engine.test.ts src/search/levels.test.ts src/ads/ads.test.ts src/economy/economy.test.ts src/economy/flows.test.ts src/daily/daily.test.ts src/analytics/analytics.test.ts src/billing/billing.test.ts src/pass/pass.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "private": true

@@ -42,4 +42,5 @@ In the browser console, `__analyticsEvents()` lists the events that would be sen
 - [ ] Streak: play on consecutive days; skip a day and it restarts.
 - [ ] Kill the app during an ad / right after finishing a level: coins and progress are consistent on relaunch.
 - [ ] Background the app while an ad is playing and come back: the game is not stuck.
+- [ ] Season Pass: locked banner until level 3; finish 3 different puzzles -> tier 1 reward claimable once; replaying a level gives no second key; premium needs 500 coins and is charged once.
 - [ ] Settings -> Usage stats off: no analytics events.

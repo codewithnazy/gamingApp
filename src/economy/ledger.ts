@@ -21,6 +21,18 @@ export interface StreakState {
   lastDate: DateKey | null;
 }
 
+/** Season Pass progress for ONE season; it resets itself when a new season starts. */
+export interface PassState {
+  /** Which season these keys belong to (-1 = none yet). */
+  season: number;
+  /** Keys earned this season. */
+  keys: number;
+  /** Puzzles that already gave a key this season (so replays can't farm the pass). */
+  seen: Record<string, true>;
+}
+
+export const EMPTY_PASS: PassState = { season: -1, keys: 0, seen: {} };
+
 export interface EconomyState {
   version: 1;
   coins: number;
@@ -36,6 +48,8 @@ export interface EconomyState {
   streak: StreakState;
   /** The "Remove Ads" entitlement (set by a future purchase/restore; see src/billing). */
   adsRemoved: boolean;
+  /** Season Pass keys for the current season. (Claimed rewards live in `granted`.) */
+  pass: PassState;
 }
 
 export const EMPTY_STREAK: StreakState = { current: 0, best: 0, lastDate: null };
@@ -49,6 +63,7 @@ export const EMPTY_ECONOMY: EconomyState = {
   challenge: { lastCompleted: null },
   streak: EMPTY_STREAK,
   adsRemoved: false,
+  pass: EMPTY_PASS,
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -144,5 +159,22 @@ export function sanitizeEconomy(raw: unknown): EconomyState {
     challenge: { lastCompleted: date(obj(r.challenge).lastCompleted) },
     streak,
     adsRemoved: r.adsRemoved === true,
+    pass: sanitizePass(r.pass),
   };
+}
+
+const MAX_PASS_KEYS = 1000;
+
+function sanitizePass(raw: unknown): PassState {
+  const p = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const season = typeof p.season === 'number' && Number.isInteger(p.season) && p.season >= 0 ? Math.min(100_000, p.season) : -1;
+  if (season < 0) return EMPTY_PASS;
+  const keys = typeof p.keys === 'number' && Number.isFinite(p.keys) ? Math.min(MAX_PASS_KEYS, Math.max(0, Math.floor(p.keys))) : 0;
+  const seen: Record<string, true> = {};
+  if (p.seen && typeof p.seen === 'object') {
+    for (const [k, v] of Object.entries(p.seen as Record<string, unknown>)) {
+      if (isId(k) && v === true && Object.keys(seen).length < MAX_PASS_KEYS) seen[k] = true;
+    }
+  }
+  return { season, keys, seen };
 }

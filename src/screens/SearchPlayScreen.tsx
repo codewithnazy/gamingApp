@@ -15,6 +15,8 @@ import { rewardedFailureMessage } from '../ads/messages';
 import { track } from '../analytics';
 import { dailySpec, generateDailyPuzzle } from '../daily/challenge';
 import { finishDailyChallenge, notePuzzlePlayed } from '../daily/actions';
+import { earnPassKey } from '../pass/actions';
+import { PASS } from '../pass/pass';
 import { CoinChip } from '../components/CoinChip';
 import { GradientBackground } from '../components/GradientBackground';
 import { HintDialog } from '../components/HintDialog';
@@ -130,6 +132,7 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, dai
     record: boolean;
     unlocked?: number; // level that this win newly unlocked
     rewards: RewardLine[]; // coins actually paid for this win (empty on replays)
+    pass?: { keys: number; tierUp: number | null }; // Season Pass key earned by this win
   } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [area, setArea] = useState({ w: 0, h: 0 });
@@ -287,10 +290,18 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, dai
       if (record) onNewBest(key, time);
     }
     notePuzzlePlayed(); // streak: any finished puzzle counts, once per calendar day
+    // Season Pass: one key the first time a given puzzle is finished this season (campaign level or
+    // daily challenge). Only once the pass has been unlocked, so new players aren't confused by it.
+    let pass: { keys: number; tierUp: number | null } | undefined;
+    const passId = daily ? `daily:${daily}` : level ? `level:${level}` : null;
+    if (passId && progress.unlocked >= PASS.unlockLevel) {
+      const k = earnPassKey(passId);
+      if (k.earned) pass = { keys: k.keys, tierUp: k.tierUp };
+    }
     const t = setTimeout(() => feedback.success(), 250);
     notePuzzleCompleted();
     track('level_completed', { level: level ?? 0, mode, stars, hints, seconds: time });
-    setWon({ time, stars, record, unlocked, rewards });
+    setWon({ time, stars, record, unlocked, rewards, pass });
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foundCount, words.length]);
@@ -548,6 +559,11 @@ export function SearchPlayScreen({ settings, best, onNewBest, onBack, level, dai
                 {hints === 0 ? 'No hints used — perfect!' : `${hints} hint${hints > 1 ? 's' : ''} used`}
               </Text>
               <RewardSummary lines={won?.rewards ?? []} />
+              {won?.pass ? (
+                <Text style={styles.passLine} accessibilityLabel="Season Pass key earned">
+                  🔑 +1 Season Pass key{won.pass.tierUp ? ` · Tier ${won.pass.tierUp} reached!` : ''}
+                </Text>
+              ) : null}
               {won?.unlocked && <Text style={styles.unlock}>🔓 Level {won.unlocked} unlocked!</Text>}
               {level && level >= MAX_LEVELS && (
                 <Text style={styles.unlock}>You&apos;ve finished every level — amazing!</Text>
@@ -636,6 +652,7 @@ const styles = StyleSheet.create({
   cardTitle: { color: ink, fontSize: 26, fontWeight: '900' },
   stars: { fontSize: 32, marginVertical: 4 },
   cardSub: { color: '#5b5575', fontSize: 15, fontWeight: '600' },
+  passLine: { color: '#6a3fb0', fontSize: 14, fontWeight: '800', marginTop: 4, textAlign: 'center' },
   unlock: { color: '#1c8a4e', fontSize: 15, fontWeight: '800', marginTop: 6, textAlign: 'center' },
   primary: { alignSelf: 'stretch', backgroundColor: '#ffb020', borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginTop: 14 },
   primaryText: { color: ink, fontSize: 17, fontWeight: '900' },

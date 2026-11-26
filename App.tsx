@@ -14,6 +14,7 @@ import { EMPTY_PROGRESS, type LevelProgress } from './src/search/levels';
 import { PALETTES, THEME_CHOICES } from './src/search/themes';
 import { HeistScreen } from './src/screens/HeistScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
+import { PassScreen } from './src/screens/PassScreen';
 import { SearchPlayScreen } from './src/screens/SearchPlayScreen';
 import { SearchSetupScreen } from './src/screens/SearchSetupScreen';
 import { DEFAULT_SETTINGS, sanitizeSettings, type Settings } from './src/settings';
@@ -27,7 +28,7 @@ import {
   type BestTimes,
 } from './src/storage';
 
-type Screen = 'home' | 'search-setup' | 'search-play' | 'daily' | 'heist';
+type Screen = 'home' | 'search-setup' | 'search-play' | 'daily' | 'heist' | 'pass';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
@@ -138,6 +139,8 @@ export default function App() {
             setScreen('daily');
           }}
           onHeist={() => setScreen('heist')}
+          onPass={() => setScreen('pass')}
+          unlockedLevel={progress.unlocked}
         />
       )}
       {screen === 'search-setup' && (
@@ -184,6 +187,7 @@ export default function App() {
           onBack={() => setScreen('home')}
         />
       )}
+      {screen === 'pass' && <PassScreen settings={settings} onBack={() => setScreen('home')} />}
       {screen === 'heist' && <HeistScreen onBack={() => setScreen('home')} />}
       <CoinFloater />
       <StreakCelebration />

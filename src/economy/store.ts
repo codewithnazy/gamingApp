@@ -47,9 +47,10 @@ export interface EconomyStore {
   /**
    * Run a pure state transition as ONE atomic commit (one persisted snapshot), so related changes
    * - e.g. "grant the daily coins" + "remember today as claimed" - can never be saved half-done.
-   * `gain` (optional) is announced to onGain listeners only if the state actually changed.
+   * `gain` / `spend` (optional) are announced to onGain / onSpend listeners only if the state
+   * actually changed.
    */
-  transact<T>(fn: (s: EconomyState) => { state: EconomyState; result: T; gain?: GainEvent }): T;
+  transact<T>(fn: (s: EconomyState) => { state: EconomyState; result: T; gain?: GainEvent; spend?: SpendEvent }): T;
 }
 
 export function createEconomyStore(storage: EconomyStorage, onError?: (e: unknown) => void): EconomyStore {
@@ -142,6 +143,7 @@ export function createEconomyStore(storage: EconomyStorage, onError?: (e: unknow
       if (out.state !== state) {
         commit(out.state);
         if (out.gain) gainListeners.forEach((l) => l(out.gain as GainEvent));
+        if (out.spend) spendListeners.forEach((l) => l(out.spend as SpendEvent));
       }
       return out.result;
     },

@@ -2,7 +2,7 @@
 // call site is checked by the compiler. Names are snake_case and short (Firebase limits event names
 // to 40 characters). NO personal data is ever included: only game-state numbers and fixed labels.
 
-export type CoinSource = 'level' | 'rewarded-ad' | 'daily-login' | 'daily-challenge' | 'refund';
+export type CoinSource = 'level' | 'rewarded-ad' | 'daily-login' | 'daily-challenge' | 'pass-free' | 'pass-premium' | 'refund';
 export type AdPlacement = 'free_coins' | 'hint' | 'interstitial';
 
 export interface AnalyticsEvents {
@@ -23,6 +23,9 @@ export interface AnalyticsEvents {
   daily_challenge_completed: { date: string; seconds: number; stars: number };
   daily_reward_claimed: { amount: number; streak?: number };
   streak_updated: { streak: number; best: number };
+  pass_key_earned: { keys: number; tier: number };
+  pass_reward_claimed: { tier: number; track: 'free' | 'premium'; amount: number };
+  pass_premium_activated: { season: number };
 }
 
 export type EventName = keyof AnalyticsEvents;
