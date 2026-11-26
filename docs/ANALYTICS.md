@@ -40,7 +40,7 @@ restart is the closest thing to "failed"), `hint_requested`, `hint_used`, `coins
 > if anything differs.
 
 1. **Firebase console** -> create a project -> *Add app* -> Android. Use your real package name
-   (the `android.package` in `app.json`; change the `com.example.wordheist` placeholder first).
+   (the `android.package` in `app.json`; change the `com.example.wordarcade` placeholder first).
    Download `google-services.json` into the project root.
 2. Install (needs a native build, so not Expo Go):
    ```bash

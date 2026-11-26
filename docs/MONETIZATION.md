@@ -70,7 +70,7 @@ src/ads/index.ts  - the ad SERVICE: single-flight, typed results, frequency poli
 ### 2b. AdMob account configuration checklist
 - [ ] Payments profile and tax info completed (needed before payouts).
 - [ ] App added with the **same package name** as `android.package` in `app.json` (change the
-      `com.example.wordheist` placeholder first - it cannot be changed after publishing).
+      `com.example.wordarcade` placeholder first - it cannot be changed after publishing).
 - [ ] **Privacy & messaging**: create and *publish* a European regulations (GDPR) message, so the
       consent form appears for EU/UK users.
 - [ ] **Test devices** registered (Settings -> Test devices) and their IDs added to `testDeviceIds`

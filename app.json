@@ -1,14 +1,14 @@
 {
   "expo": {
     "name": "Word Arcade",
-    "slug": "word-heist",
+    "slug": "word-arcade",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.example.wordheist"
+      "bundleIdentifier": "com.example.wordarcade"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +18,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.example.wordheist"
+      "package": "com.example.wordarcade"
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -12,7 +12,6 @@ import { setHapticsEnabled } from './src/haptics';
 import { DIFFICULTIES } from './src/search/engine';
 import { EMPTY_PROGRESS, type LevelProgress } from './src/search/levels';
 import { PALETTES, THEME_CHOICES } from './src/search/themes';
-import { HeistScreen } from './src/screens/HeistScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { PassScreen } from './src/screens/PassScreen';
 import { SearchPlayScreen } from './src/screens/SearchPlayScreen';
@@ -21,6 +20,7 @@ import { DEFAULT_SETTINGS, sanitizeSettings, type Settings } from './src/setting
 import {
   loadBestTimes,
   loadLevelProgress,
+  clearRetiredData,
   loadRawSettings,
   saveBestTimes,
   saveLevelProgress,
@@ -28,7 +28,7 @@ import {
   type BestTimes,
 } from './src/storage';
 
-type Screen = 'home' | 'search-setup' | 'search-play' | 'daily' | 'heist' | 'pass';
+type Screen = 'home' | 'search-setup' | 'search-play' | 'daily' | 'pass';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
@@ -63,6 +63,7 @@ export default function App() {
   // Start ads once (consent form first where required). Failure just means no ads.
   useEffect(() => {
     initAds();
+    clearRetiredData(); // Word Heist was removed: drop its old saved progress
     track('app_opened', {});
   }, []);
 
@@ -138,7 +139,6 @@ export default function App() {
             setDailyDate(dateKey()); // today, as of the moment the player taps
             setScreen('daily');
           }}
-          onHeist={() => setScreen('heist')}
           onPass={() => setScreen('pass')}
           unlockedLevel={progress.unlocked}
         />
@@ -188,7 +188,6 @@ export default function App() {
         />
       )}
       {screen === 'pass' && <PassScreen settings={settings} onBack={() => setScreen('home')} />}
-      {screen === 'heist' && <HeistScreen onBack={() => setScreen('home')} />}
       <CoinFloater />
       <StreakCelebration />
       <AdOverlay />

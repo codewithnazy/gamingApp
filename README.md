@@ -43,10 +43,6 @@ jumbled together) by default, or pick a single theme.
 Each puzzle is freshly generated. 💡 Hints ring the first letter of a hidden word; finish
 with no hints for ⭐⭐⭐.
 
-### 🕶️ Word Heist
-A daily 5-letter word puzzle (6 guesses). Once per day you can steal one letter from the
-rival's board for −150 points.
-
 ## Run it
 
 ```bash
@@ -85,10 +81,9 @@ Docs: [`ARCHITECTURE`](docs/ARCHITECTURE.md) · [`MONETIZATION` (AdMob setup)](d
 - `src/search/levels.ts` — 500 level configs, worlds, level puzzles, progress and unlocking
 - `src/search/themes.ts` — themes, the mixed word pool, background palettes, found-word colours
 - `src/search/moreWords.ts` — the extra words and new themes merged into the base lists
-- `src/screens/` — `HomeScreen`, `SearchSetupScreen`, `SearchPlayScreen`, `HeistScreen`
-- `src/components/` — `GradientBackground`, and the Word Heist `Board`/`Keyboard`/modals
-- `src/game.ts` — pure Word Heist logic
-- `src/*.test.ts`, `src/search/*.test.ts` — tests (including word-list validation)
+- `src/screens/` — `HomeScreen`, `SearchSetupScreen`, `SearchPlayScreen`, `PassScreen`
+- `src/components/` — `GradientBackground`, dialogs, coin chip and other shared pieces
+- `src/**/*.test.ts` — tests (including word-list validation)
 - `src/economy/` — coin ledger, rewards, flows · `src/daily/` — daily reward, challenge, streak
 - `src/ads/` — ad service: config, policy, AdMob layer (`adsImpl.ts`) and a web simulation
 - `src/pass/` — Season Pass: calendar, rules, actions
@@ -100,8 +95,6 @@ Docs: [`ARCHITECTURE`](docs/ARCHITECTURE.md) · [`MONETIZATION` (AdMob setup)](d
 - About 1,700 words. Across the 500 levels, roughly 88% of them appear and the typical word turns up
   about 5 times. Add more to `src/search/moreWords.ts` (A–Z only, 4–10 letters); the tests validate
   every word and check each theme is big enough for all three difficulties.
-- Ideas: a daily seeded puzzle, custom word lists, more themes, sound effects.
-- Word Heist's daily word uses the device's local date, and its rival is flavour text
-  (no backend).
+- Ideas: custom word lists, more themes, sound effects, lives or a shop.
 - `bundleIdentifier` / `package` in `app.json` are placeholders
-  (`com.example.wordheist`) — change them before building for the stores.
+  (`com.example.wordarcade`) — change them before building for the stores.

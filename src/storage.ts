@@ -1,9 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { EMPTY_STATS, type GameState, type Stats } from './game.ts';
 import { sanitizeProgress, type LevelProgress } from './search/levels.ts';
 
-const GAME_KEY = 'wordheist:game:v1';
-const STATS_KEY = 'wordheist:stats:v1';
 
 async function readJson<T>(key: string): Promise<T | null> {
   try {
@@ -23,20 +20,17 @@ async function writeJson(key: string, value: unknown): Promise<void> {
   }
 }
 
-/** Returns the saved game only if it belongs to `date`; otherwise null (new day). */
-export async function loadGame(date: string): Promise<GameState | null> {
-  const saved = await readJson<GameState>(GAME_KEY);
-  return saved && saved.date === date ? saved : null;
+/**
+ * Word Heist was removed from the app; tidy up the progress it saved. Best effort, harmless if the
+ * keys don't exist.
+ */
+export async function clearRetiredData(): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove(['wordheist:game:v1', 'wordheist:stats:v1']);
+  } catch {
+    // not important
+  }
 }
-
-export const saveGame = (state: GameState) => writeJson(GAME_KEY, state);
-
-export async function loadStats(): Promise<Stats> {
-  const saved = await readJson<Stats>(STATS_KEY);
-  return saved ? { ...EMPTY_STATS, ...saved } : EMPTY_STATS;
-}
-
-export const saveStats = (stats: Stats) => writeJson(STATS_KEY, stats);
 
 // ---- Word Search -----------------------------------------------------------
 

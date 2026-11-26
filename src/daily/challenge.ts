@@ -4,7 +4,7 @@ import { ALL_DIRS, generatePuzzleFromSpec, type Puzzle } from '../search/engine.
 import { ALL_WORDS } from '../search/themes.ts';
 import type { DateKey } from '../economy/ledger.ts';
 
-/** FNV-1a: tiny deterministic string hash (same one the Heist daily word uses). */
+/** FNV-1a: tiny deterministic string hash (a tiny deterministic hash, so every player gets the same puzzle). */
 export function hashString(str: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < str.length; i++) {

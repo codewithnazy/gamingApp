@@ -24,7 +24,6 @@ interface Props {
   settings: Settings;
   onSearch: () => void;
   onDaily: () => void;
-  onHeist: () => void;
   onPass: () => void;
   /** The highest level the player has reached (the Season Pass opens at PASS.unlockLevel). */
   unlockedLevel: number;
@@ -33,12 +32,12 @@ interface Props {
 // The daily-reward popup opens by itself at most once per app session (and only if unclaimed).
 let dailyPopupShown = false;
 
-export function HomeScreen({ settings, onSearch, onDaily, onHeist, onPass, unlockedLevel }: Props) {
+export function HomeScreen({ settings, onSearch, onDaily, onPass, unlockedLevel }: Props) {
   const today = useToday();
   const eco = useEconomy();
   const { height } = useWindowDimensions();
-  const compact = height < 860;
-  const tight = height < 780; // short phones: cards drop their description line
+  const compact = height < 760;
+  const tight = height < 680; // short phones: cards drop their description line
   const [freeOpen, setFreeOpen] = useState(false);
   const [rewardOpen, setRewardOpen] = useState(false);
   const [noAdsOpen, setNoAdsOpen] = useState(false);
@@ -145,15 +144,6 @@ export function HomeScreen({ settings, onSearch, onDaily, onHeist, onPass, unloc
               compact={compact}
               tight={tight}
               onPress={go(onDaily)}
-            />
-            <GameCard
-              emoji="🕶️"
-              title="Word Heist"
-              blurb="One daily 5-letter puzzle. Steal a letter if you get stuck."
-              cta="Play today's"
-              compact={compact}
-              tight={tight}
-              onPress={go(onHeist)}
             />
           </View>
 
